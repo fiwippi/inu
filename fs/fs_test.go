@@ -25,6 +25,7 @@ func TestDeduplication(t *testing.T) {
 
 		// Get node
 		b, err := fs.store.Get(n.Block().CID)
+		require.NoError(t, err)
 		m, err := merkle.ParseBlock(b)
 		require.NoError(t, err)
 		require.Equal(t, n, m)
@@ -43,6 +44,7 @@ func TestDeduplication(t *testing.T) {
 
 		// Get node
 		b, err := fs.store.Get(n.Block().CID)
+		require.NoError(t, err)
 		m, err := merkle.ParseBlock(b)
 		require.NoError(t, err)
 		require.Equal(t, n, m)

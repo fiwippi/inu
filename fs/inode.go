@@ -40,7 +40,6 @@ func (r raw) kind() kind { return rawKind }
 type directory struct{}
 
 func (d directory) MarshalJSON() ([]byte, error) {
-	type _directory directory
 	return json.Marshal(struct {
 		K kind `json:"kind"`
 	}{
