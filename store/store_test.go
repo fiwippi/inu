@@ -7,7 +7,7 @@ import (
 )
 
 func TestStore(t *testing.T) {
-	s := NewStore("file::memory:")
+	s := NewStore(InMemory)
 	b, err := NewBlock([]byte("a"))
 	require.NoError(t, err)
 

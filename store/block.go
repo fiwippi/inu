@@ -23,3 +23,12 @@ func NewBlock(data []byte) (Block, error) {
 		Data: data,
 	}, nil
 }
+
+func (b Block) Copy() Block {
+	tmp := make([]byte, len(b.Data))
+	copy(tmp, b.Data)
+	return Block{
+		CID:  b.CID,
+		Data: tmp,
+	}
+}

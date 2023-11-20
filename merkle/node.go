@@ -25,6 +25,32 @@ type Node struct {
 	block store.Block
 }
 
+func (n *Node) Links() []Link {
+	return n.attr.Links
+}
+
+func (n *Node) Data() []byte {
+	return n.attr.Data
+}
+
+func (n *Node) Block() store.Block {
+	return n.block
+}
+
+func ParseBlock(b store.Block) (Node, error) {
+	// Decode into attributes
+	var attr attributes
+	if err := json.Unmarshal(b.Data, &attr); err != nil {
+		return Node{}, err
+	}
+
+	// Return the node
+	return Node{
+		attr:  attr,
+		block: b.Copy(),
+	}, nil
+}
+
 type NodeBuilder struct {
 	attr attributes
 }
@@ -46,6 +72,15 @@ func (b *NodeBuilder) AddLink(name string, n *Node) *NodeBuilder {
 		Name: name,
 		CID:  n.block.CID,
 	})
+
+	return b
+}
+
+func (b *NodeBuilder) Reset() *NodeBuilder {
+	b.attr = attributes{
+		Links: make([]Link, 0),
+		Data:  nil,
+	}
 
 	return b
 }

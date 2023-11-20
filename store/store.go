@@ -7,6 +7,8 @@ import (
 	"inu"
 )
 
+const InMemory string = "file::memory:"
+
 type Store struct {
 	pool *sqlx.DB
 }
