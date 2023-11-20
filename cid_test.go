@@ -7,5 +7,5 @@ import (
 )
 
 func TestCID(t *testing.T) {
-	require.Equal(t, "JP2RELZUIVKMKO66F25YZUVX4PIWACWWGHBYLJOXZTRDY54FIWNA", NewCID([]byte{1}))
+	require.Equal(t, CID("JP2RELZUIVKMKO66F25YZUVX4PIWACWWGHBYLJOXZTRDY54FIWNA"), NewCID([]byte{1}))
 }
