@@ -24,7 +24,11 @@ func NewBlock(data []byte) (Block, error) {
 	}, nil
 }
 
-func (b Block) Copy() Block {
+func (b *Block) Valid() bool {
+	return inu.NewCID(b.Data) == b.CID
+}
+
+func (b *Block) Copy() Block {
 	tmp := make([]byte, len(b.Data))
 	copy(tmp, b.Data)
 	return Block{

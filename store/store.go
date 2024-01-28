@@ -20,11 +20,11 @@ func NewStore(path string) *Store {
 	}
 
 	// Create the tables
-	stmt := `CREATE TABLE IF NOT EXISTS blocks (
-             cid   TEXT PRIMARY KEY,
-             data  BLOB NOT NULL 
-	         );`
-	s.pool.MustExec(stmt)
+	s.pool.MustExec(
+		`CREATE TABLE IF NOT EXISTS blocks (
+         cid  TEXT PRIMARY KEY,
+         data BLOB NOT NULL 
+	     );`)
 
 	return s
 }

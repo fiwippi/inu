@@ -21,3 +21,19 @@ func TestNewBlock(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestBlock_Valid(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		b, err := NewBlock([]byte("a"))
+		require.NoError(t, err)
+		require.True(t, b.Valid())
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		b := Block{
+			CID:  "invalid",
+			Data: []byte("a"),
+		}
+		require.False(t, b.Valid())
+	})
+}
