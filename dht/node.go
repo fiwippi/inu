@@ -25,27 +25,33 @@ import (
 // Node Config
 
 type NodeConfig struct {
+	// HTTP
+	Host string `json:"host"`
+	Port uint16 `json:"port"`
+
 	// Kademlia settings
-	Alpha        int // Degree of parallelism in requests
-	K            int // Size of each bucket
-	RepublishDur time.Duration
-	RefreshDur   time.Duration
-	Expiry       time.Duration
-	RotateDur    time.Duration
+	ID           Key           `json:"id"`
+	Alpha        int           `json:"alpha"` // Degree of parallelism in requests
+	K            int           `json:"k"`     // Size of each bucket
+	RepublishDur time.Duration `json:"republish_duration"`
+	RefreshDur   time.Duration `json:"refresh_duration"`
+	Expiry       time.Duration `json:"expiry_duration"`
 
 	// Auth
-	SwarmKey  Key // Used for inter-node RPCs
-	UploadKey Key // Used for peer-node RPCs
+	SwarmKey  Key `json:"swarm_key"`  // Used for inter-node RPCs
+	UploadKey Key `json:"upload_key"` // Used for peer-node RPCs
 }
 
 func DefaultNodeConfig() NodeConfig {
 	return NodeConfig{
+		Host:         "localhost",
+		Port:         3000,
+		ID:           Key{},
 		Alpha:        3,
 		K:            20,
 		RepublishDur: time.Hour,
 		RefreshDur:   time.Hour,
 		Expiry:       24 * time.Hour,
-		RotateDur:    5 * time.Minute,
 		SwarmKey:     Key{},
 		UploadKey:    Key{},
 	}
@@ -54,8 +60,9 @@ func DefaultNodeConfig() NodeConfig {
 // Node
 
 type Node struct {
+	server *http.Server
+
 	// Task accounting
-	server        *http.Server
 	stopRefresh   chan struct{}
 	stopRepublish chan struct{}
 
@@ -73,11 +80,11 @@ type Node struct {
 	config NodeConfig
 }
 
-func NewNode(id Key, host, port string, config NodeConfig) (*Node, error) {
+func NewNode(config NodeConfig) (*Node, error) {
 	// Create the self contact
 	self := Contact{
-		ID:      id,
-		Address: host + ":" + port,
+		ID:      config.ID,
+		Address: fmt.Sprintf("%s:%d", config.Host, config.Port),
 	}
 
 	// Create the node
@@ -105,6 +112,8 @@ func NewNode(id Key, host, port string, config NodeConfig) (*Node, error) {
 }
 
 func (n *Node) Start() {
+	slog.Info("starting DHT node", slog.Any("id", n.self.ID), slog.String("address", n.self.Address))
+
 	// Start the server
 	go func() {
 		if err := n.server.ListenAndServeTLS("", ""); err != nil {
@@ -121,6 +130,8 @@ func (n *Node) Start() {
 }
 
 func (n *Node) Stop() error {
+	defer slog.Info("DHT stopped")
+
 	// Stop long-running tasks
 	n.stopRefresh <- struct{}{}
 	n.stopRepublish <- struct{}{}

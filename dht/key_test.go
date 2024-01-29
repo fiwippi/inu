@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestKey_MarshalJSON(t *testing.T) {
+func TestKey_MarshalB32(t *testing.T) {
 	s := newKey(0).MarshalB32()
 	require.Equal(t, `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`, s)
 
@@ -16,7 +16,7 @@ func TestKey_MarshalJSON(t *testing.T) {
 	require.Equal(t, `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYZTGMQ`, s)
 }
 
-func TestKey_UnmarshalJSON(t *testing.T) {
+func TestKey_UnmarshalB32(t *testing.T) {
 	k := Key{}
 	require.NoError(t, k.UnmarshalB32("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYZTGMQ"))
 	require.Equal(t, newKey(pow2(23)*31/5), k)

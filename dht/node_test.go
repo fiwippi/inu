@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,6 +19,19 @@ import (
 
 	"inu/cert"
 )
+
+// Node Config
+
+func TestNodeConfig_JSON(t *testing.T) {
+	c1 := DefaultNodeConfig()
+	data, err := json.MarshalIndent(c1, "", " ")
+	require.NoError(t, err)
+	fmt.Println(string(data))
+
+	var c2 NodeConfig
+	require.NoError(t, json.Unmarshal(data, &c2))
+	require.Equal(t, c1, c2)
+}
 
 // Nodes
 
@@ -1778,7 +1792,15 @@ func newTestNode(k uint64, port string) *Node {
 }
 
 func newTestNodeCustom(k uint64, port string, c NodeConfig) *Node {
-	n, err := NewNode(newKey(k), "", port, c)
+	c.ID = newKey(k)
+	c.Host = ""
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		panic(err)
+	}
+	c.Port = uint16(p)
+
+	n, err := NewNode(c)
 	if err != nil {
 		panic(err)
 	}

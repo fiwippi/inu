@@ -1,6 +1,6 @@
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -o ./bin/inu cmd/main.go
+	CGO_ENABLED=0 go build -o ./bin/inu cmd/*
 
 .PHONY: test
 test:
