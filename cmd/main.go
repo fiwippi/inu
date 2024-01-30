@@ -7,13 +7,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const storePath = "inu.db"
+
 var rootCmd = &cobra.Command{
 	Use:               "inu",
 	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 }
 
 func init() {
+	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(dhtCmd)
+	rootCmd.AddCommand(uploadCmd)
 }
 
 func main() {

@@ -300,6 +300,13 @@ func validateUpload(n *Node) func(http.Handler) http.Handler {
 			ctx = context.WithValue(ctx, ctxIP, ip)
 			r = r.WithContext(ctx)
 
+			// If we are not protected by an upload key then
+			// we accept any well-formed PUT
+			if n.config.UploadKey == (Key{}) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Parse upload key (if applicable)
 			// and serve the PUT if it's valid
 			inuUpload := r.Header.Get("Inu-Upload")

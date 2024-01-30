@@ -3,6 +3,7 @@ package dht
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"time"
@@ -13,22 +14,34 @@ import (
 // Client Config
 
 type ClientConfig struct {
-	Nodes     []string
-	UploadKey Key
+	// Client data
+	Port uint16 `json:"port"`
+
+	// DHT data
+	Nodes     []string `json:"nodes"`
+	UploadKey Key      `json:"upload_key"`
+}
+
+func DefaultClientConfig() ClientConfig {
+	nConf := DefaultNodeConfig()
+
+	return ClientConfig{
+		Port:      6000,
+		Nodes:     []string{fmt.Sprintf("%s:%d", nConf.Host, nConf.Port)},
+		UploadKey: Key{},
+	}
 }
 
 // Client
 
 type Client struct {
-	port   uint16
 	client *http.Client
 
 	config ClientConfig
 }
 
-func NewClient(port uint16, config ClientConfig) *Client {
+func NewClient(config ClientConfig) *Client {
 	return &Client{
-		port:   port,
 		config: config,
 		client: cert.Client(10 * time.Second),
 	}
@@ -62,7 +75,7 @@ func (c *Client) FindPeers(k Key) ([]Peer, error) {
 
 func (c *Client) PutKey(k Key) error {
 	// Encode the PUT
-	data, err := json.Marshal(c.port)
+	data, err := json.Marshal(c.config.Port)
 	if err != nil {
 		return err
 	}

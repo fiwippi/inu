@@ -429,6 +429,27 @@ func TestNode_PutKey(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 
+	t.Run("no upload key auth", func(t *testing.T) {
+		port := uint16(2000)
+		data, err := json.Marshal(port)
+		require.NoError(t, err)
+
+		n := newNode()
+		n.config.UploadKey = Key{}
+		n.updateContact(Contact{ID: newKey(1)})
+		n.rpc = &mockPingRpc{}
+
+		req := httptest.NewRequest("PUT", "/key/"+k.MarshalB32(), bytes.NewReader(data))
+		rec := httptest.NewRecorder()
+		n.router().ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		ps, err := n.peerStore.Get(k)
+		require.NoError(t, err)
+		require.Equal(t, port, ps[0].Port)
+		require.Equal(t, netip.MustParseAddrPort(req.RemoteAddr).Addr(), ps[0].IP)
+	})
+
 	t.Run("upload key is valid (not on network)", func(t *testing.T) {
 		port := uint16(2000)
 		data, err := json.Marshal(port)

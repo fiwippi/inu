@@ -22,6 +22,12 @@ func TestKey_UnmarshalB32(t *testing.T) {
 	require.Equal(t, newKey(pow2(23)*31/5), k)
 }
 
+func TestKey_ParseCID(t *testing.T) {
+	k, err := ParseCID("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYZTGMQ")
+	require.NoError(t, err)
+	require.Equal(t, newKey(pow2(23)*31/5), k)
+}
+
 func newKey(n uint64) Key {
 	// Encode the number to binary
 	buf := make([]byte, 8)

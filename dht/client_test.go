@@ -2,6 +2,7 @@ package dht
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/netip"
@@ -10,6 +11,21 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+// Client Config
+
+func TestClientConfig_JSON(t *testing.T) {
+	c1 := DefaultClientConfig()
+	data, err := json.MarshalIndent(c1, "", " ")
+	require.NoError(t, err)
+	fmt.Println(string(data))
+
+	var c2 ClientConfig
+	require.NoError(t, json.Unmarshal(data, &c2))
+	require.Equal(t, c1, c2)
+}
+
+// Client
 
 func TestClient_FindPeers(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
@@ -29,7 +45,7 @@ func TestClient_FindPeers(t *testing.T) {
 		})
 		defer ts.Close()
 
-		dhtC := NewClient(3000, ClientConfig{Nodes: []string{dst.Address}})
+		dhtC := NewClient(ClientConfig{Port: 3000, Nodes: []string{dst.Address}})
 		dhtC.client = ts.Client()
 
 		// Verify peers
@@ -49,7 +65,7 @@ func TestClient_FindPeers(t *testing.T) {
 					w.WriteHeader(code)
 				})
 
-				dhtC := NewClient(3000, ClientConfig{Nodes: []string{dst.Address}})
+				dhtC := NewClient(ClientConfig{Port: 3000, Nodes: []string{dst.Address}})
 				dhtC.client = ts.Client()
 				ps, err := dhtC.FindPeers(k)
 				require.Error(t, err)
@@ -74,7 +90,7 @@ func TestClient_FindPeers(t *testing.T) {
 			})
 			defer ts.Close()
 
-			dhtC := NewClient(3000, ClientConfig{Nodes: []string{dst.Address}})
+			dhtC := NewClient(ClientConfig{Port: 3000, Nodes: []string{dst.Address}})
 			dhtC.client = ts.Client()
 
 			ps, err := dhtC.FindPeers(k)
@@ -103,7 +119,8 @@ func TestClient_PutKey(t *testing.T) {
 			})
 			defer ts.Close()
 
-			dhtC := NewClient(2000, ClientConfig{
+			dhtC := NewClient(ClientConfig{
+				Port:      2000,
 				Nodes:     []string{dst.Address},
 				UploadKey: uploadK,
 			})
@@ -130,7 +147,7 @@ func TestClient_PutKey(t *testing.T) {
 			})
 			defer ts.Close()
 
-			dhtC := NewClient(3000, ClientConfig{Nodes: []string{dst.Address}})
+			dhtC := NewClient(ClientConfig{Port: 3000, Nodes: []string{dst.Address}})
 			dhtC.client = ts.Client()
 
 			require.NoError(t, dhtC.PutKey(k))
@@ -147,7 +164,7 @@ func TestClient_PutKey(t *testing.T) {
 				w.WriteHeader(code)
 			})
 
-			dhtC := NewClient(3000, ClientConfig{Nodes: []string{dst.Address}})
+			dhtC := NewClient(ClientConfig{Port: 3000, Nodes: []string{dst.Address}})
 			dhtC.client = ts.Client()
 			ps, err := dhtC.FindPeers(k)
 			require.Error(t, err)
@@ -160,7 +177,8 @@ func TestClient_PutKey(t *testing.T) {
 
 func TestIntegrationClient(t *testing.T) {
 	uploadKey := newKey(56)
-	client := NewClient(60, ClientConfig{
+	client := NewClient(ClientConfig{
+		Port:      60,
 		Nodes:     []string{"127.0.0.1:3000"}, // Node A
 		UploadKey: uploadKey,
 	})
@@ -201,7 +219,7 @@ func TestIntegrationClient(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, peersA, 1)
 		require.Equal(t, localhost, peersA[0].IP)
-		require.Equal(t, client.port, peersA[0].Port)
+		require.Equal(t, client.config.Port, peersA[0].Port)
 		require.WithinDuration(t, time.Now(), peersA[0].Published, 1*time.Second)
 		require.Equal(t, 1, peersA[0].ASN) // The ASN for localhost on A is 1
 
@@ -215,7 +233,7 @@ func TestIntegrationClient(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, ps, 1)
 		require.Equal(t, localhost, ps[0].IP)
-		require.Equal(t, client.port, ps[0].Port)
+		require.Equal(t, client.config.Port, ps[0].Port)
 		require.WithinDuration(t, time.Now(), ps[0].Published, 1*time.Second)
 		require.Equal(t, 1, ps[0].ASN) // The ASN for localhost on A is 1
 	})

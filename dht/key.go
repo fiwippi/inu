@@ -5,11 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+
+	"inu"
 )
 
 const keyLen = 32 // 32 * 8 = 256
 
 type Key [keyLen]byte
+
+func ParseCID(cid inu.CID) (Key, error) {
+	k := Key{}
+	return k, k.UnmarshalB32(string(cid))
+}
 
 func (k Key) String() string {
 	return k.MarshalB32()
