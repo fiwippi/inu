@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"net/netip"
 	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -127,10 +125,4 @@ func parseNode(cmd *cobra.Command) (*dht.Node, error) {
 	}
 
 	return n, nil
-}
-
-func done() <-chan os.Signal {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-	return c
 }

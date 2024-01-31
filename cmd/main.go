@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 )
-
-const storePath = "inu.db"
 
 var rootCmd = &cobra.Command{
 	Use:               "inu",
@@ -15,9 +15,8 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(dhtCmd)
-	rootCmd.AddCommand(uploadCmd)
+	rootCmd.AddCommand(peerCmd)
 }
 
 func main() {
@@ -25,4 +24,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func done() <-chan os.Signal {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	return c
 }

@@ -27,6 +27,10 @@ func NewFS(path string) *FS {
 	return &FS{store: store.NewStore(path)}
 }
 
+func FromStore(s *store.Store) *FS {
+	return &FS{store: s}
+}
+
 func (fs *FS) AddPath(path string) (merkle.Node, []Record, error) {
 	info, err := os.Stat(path)
 	if err != nil {
