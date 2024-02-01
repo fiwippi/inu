@@ -70,6 +70,10 @@ func (c *Client) FindPeers(k Key) ([]Peer, error) {
 		return nil, err
 	}
 
+	if len(ps) == 0 {
+		panic("should not return 0 peers")
+	}
+
 	return ps, nil
 }
 

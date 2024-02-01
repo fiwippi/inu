@@ -2,7 +2,6 @@ package dht
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -101,24 +100,22 @@ func NewNode(config NodeConfig) (*Node, error) {
 
 	// Create the HTTP server the node serves data from
 	n.server = &http.Server{
-		Addr:    n.self.Address,
-		Handler: n.router(),
-		TLSConfig: &tls.Config{
-			Certificates: []tls.Certificate{cert.Cert()},
-		},
+		Addr:      n.self.Address,
+		Handler:   n.router(),
+		TLSConfig: cert.Config(),
 	}
 
 	return n, nil
 }
 
 func (n *Node) Start() {
-	slog.Info("starting DHT node", slog.Any("id", n.self.ID), slog.String("address", n.self.Address))
+	slog.Info("Starting DHT node", slog.Any("id", n.self.ID), slog.String("address", n.self.Address))
 
 	// Start the server
 	go func() {
 		if err := n.server.ListenAndServeTLS("", ""); err != nil {
 			if err != http.ErrServerClosed {
-				slog.Error("node execution failed", slog.Any("err", err))
+				slog.Error("Node execution failed", slog.Any("err", err))
 				os.Exit(1)
 			}
 		}
@@ -138,6 +135,10 @@ func (n *Node) Stop() error {
 
 	// Stop the server
 	return n.server.Shutdown(context.Background())
+}
+
+func (n *Node) Contact() Contact {
+	return n.self
 }
 
 // Router
@@ -193,7 +194,7 @@ func (n *Node) refresh() {
 	for {
 		select {
 		case <-t.C:
-			slog.Info("refreshing buckets")
+			slog.Info("Refreshing buckets")
 
 			// Pick an ID from each bucket
 			cs := make([]Contact, 0)
@@ -212,7 +213,7 @@ func (n *Node) refresh() {
 			for _, c := range cs {
 				newContacts, err := n.FindNode(c.ID)
 				if err != nil {
-					slog.Error("failed to refresh bucket",
+					slog.Error("Failed to refresh bucket",
 						slog.Any("contact", c), slog.Any("err", err))
 				}
 
@@ -221,7 +222,7 @@ func (n *Node) refresh() {
 				}
 			}
 		case <-n.stopRefresh:
-			slog.Info("done refreshing")
+			slog.Info("Done refreshing")
 			return
 		}
 	}
@@ -233,17 +234,17 @@ func (n *Node) republish() {
 	for {
 		select {
 		case <-t.C:
-			slog.Info("republishing keys")
+			slog.Info("Republishing keys")
 
 			ps := n.peerStore.GetAll()
 			for _, p := range ps {
 				if err := n.Store(p.K, p.P); err != nil {
-					slog.Error("failed to republish peers", slog.Any("key", p.K),
+					slog.Error("Failed to republish peers", slog.Any("key", p.K),
 						slog.Any("peers", p.P), slog.Any("err", err))
 				}
 			}
 		case <-n.stopRepublish:
-			slog.Info("done republishing")
+			slog.Info("Done republishing")
 			return
 		}
 	}
@@ -273,7 +274,7 @@ func validateUpload(n *Node) func(http.Handler) http.Handler {
 			k := Key{}
 			err := k.UnmarshalB32(chi.URLParam(r, "key"))
 			if err != nil {
-				slog.Error("could not parse key", slog.Any("err", err))
+				slog.Error("Could not parse key", slog.Any("err", err))
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -282,7 +283,7 @@ func validateUpload(n *Node) func(http.Handler) http.Handler {
 			var port uint16
 			err = json.NewDecoder(r.Body).Decode(&port)
 			if err != nil {
-				slog.Error("could not decode put request", slog.Any("err", err))
+				slog.Error("Could not decode put request", slog.Any("err", err))
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -290,7 +291,7 @@ func validateUpload(n *Node) func(http.Handler) http.Handler {
 			// 3
 			ip, err := parseIP(r.RemoteAddr)
 			if err != nil {
-				slog.Error("remote address invalid", slog.Any("err", err))
+				slog.Error("Remote address invalid", slog.Any("err", err))
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -314,7 +315,7 @@ func validateUpload(n *Node) func(http.Handler) http.Handler {
 				uploadKey := Key{}
 				err := uploadKey.UnmarshalB32(inuUpload)
 				if err != nil {
-					slog.Error("could not parse upload key in header", slog.Any("err", err))
+					slog.Error("Could not parse upload key in header", slog.Any("err", err))
 					w.WriteHeader(http.StatusBadRequest)
 					return
 				}
@@ -335,7 +336,7 @@ func validateUpload(n *Node) func(http.Handler) http.Handler {
 			}
 
 			// Otherwise we have an invalid upload request
-			slog.Error("invalid upload request",
+			slog.Error("Invalid upload request",
 				slog.Any("key", k), slog.Any("err", err))
 			w.WriteHeader(http.StatusUnauthorized)
 		})
@@ -349,14 +350,14 @@ func authSwarmKey(n *Node) func(http.Handler) http.Handler {
 			k := Key{}
 			err := k.UnmarshalB32(r.Header.Get("Inu-Swarm"))
 			if err != nil {
-				slog.Error("could not parse swarm key in header", slog.Any("err", err))
+				slog.Error("Could not parse swarm key in header", slog.Any("err", err))
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
 
 			// Validate the swarm key
 			if k != n.config.SwarmKey {
-				slog.Error("invalid swarm key", slog.Any("key", k))
+				slog.Error("Invalid swarm key", slog.Any("key", k))
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
@@ -374,7 +375,7 @@ func parseSrc(n *Node) func(http.Handler) http.Handler {
 			c := Contact{}
 			err := json.Unmarshal([]byte(r.Header.Get("Inu-Src")), &c)
 			if err != nil {
-				slog.Error("could not parse src in header", slog.Any("err", err))
+				slog.Error("Could not parse src in header", slog.Any("err", err))
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -398,7 +399,7 @@ func handleKeyGet(n *Node) http.HandlerFunc {
 		k := Key{}
 		err := k.UnmarshalB32(chi.URLParam(r, "key"))
 		if err != nil {
-			slog.Error("could not parse key", slog.Any("err", err))
+			slog.Error("Could not parse key", slog.Any("err", err))
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -406,7 +407,7 @@ func handleKeyGet(n *Node) http.HandlerFunc {
 		// Get the ASN of the requesting IP
 		ip, err := parseIP(r.RemoteAddr)
 		if err != nil {
-			slog.Error("remote address invalid", slog.Any("err", err))
+			slog.Error("Remote address invalid", slog.Any("err", err))
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -436,7 +437,7 @@ func handleKeyGet(n *Node) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(p); err != nil {
-			slog.Error("failed to marshal peers", slog.Any("err", err))
+			slog.Error("Failed to marshal peers", slog.Any("err", err))
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}
@@ -461,7 +462,7 @@ func handleKeyPut(n *Node) http.HandlerFunc {
 		}
 
 		if err := n.Store(k, []Peer{p}); err != nil {
-			slog.Error("could not store pair", slog.Any("err", err))
+			slog.Error("Could not store pair", slog.Any("err", err))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -483,7 +484,7 @@ func handleStore(n *Node) http.HandlerFunc {
 		p := pair{}
 		err := json.NewDecoder(r.Body).Decode(&p)
 		if err != nil {
-			slog.Error("could not decode pair", slog.Any("err", err))
+			slog.Error("Could not decode pair", slog.Any("err", err))
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -500,7 +501,7 @@ func handleFindNode(n *Node) http.HandlerFunc {
 		k := Key{}
 		err := k.UnmarshalB32(chi.URLParam(r, "key"))
 		if err != nil {
-			slog.Error("could not parse key", slog.Any("err", err))
+			slog.Error("Could not parse key", slog.Any("err", err))
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -513,7 +514,7 @@ func handleFindNode(n *Node) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(closest); err != nil {
-			slog.Error("failed to marshal closest contacts", slog.Any("err", err))
+			slog.Error("Failed to marshal closest contacts", slog.Any("err", err))
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}
@@ -524,7 +525,7 @@ func handleFindPeers(n *Node) http.HandlerFunc {
 		k := Key{}
 		err := k.UnmarshalB32(chi.URLParam(r, "key"))
 		if err != nil {
-			slog.Error("could not parse key", slog.Any("err", err))
+			slog.Error("Could not parse key", slog.Any("err", err))
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}

@@ -2,20 +2,32 @@ package dht
 
 import (
 	"encoding/base32"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math/big"
 
-	"inu"
+	"inu/cid"
 )
 
 const keyLen = 32 // 32 * 8 = 256
 
 type Key [keyLen]byte
 
-func ParseCID(cid inu.CID) (Key, error) {
+func ParseCID(cid cid.CID) (Key, error) {
 	k := Key{}
 	return k, k.UnmarshalB32(string(cid))
+}
+
+func ParseUint64(n uint64) Key {
+	// Encode the number to binary
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, n)
+
+	// Copy this onto the key
+	k := Key{}
+	copy(k[keyLen-len(buf):], buf[:])
+	return k
 }
 
 func (k Key) String() string {

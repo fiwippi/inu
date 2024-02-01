@@ -3,13 +3,13 @@ package store
 import (
 	"fmt"
 
-	"inu"
+	"inu/cid"
 )
 
 const MaxBlockSize = 5 * 1024 * 1024
 
 type Block struct {
-	CID  inu.CID `json:"cid"`
+	CID  cid.CID `json:"cid"`
 	Data []byte  `json:"data"`
 }
 
@@ -19,13 +19,13 @@ func NewBlock(data []byte) (Block, error) {
 	}
 
 	return Block{
-		CID:  inu.NewCID(data),
+		CID:  cid.New(data),
 		Data: data,
 	}, nil
 }
 
 func (b *Block) Valid() bool {
-	return inu.NewCID(b.Data) == b.CID
+	return cid.New(b.Data) == b.CID
 }
 
 func (b *Block) Copy() Block {

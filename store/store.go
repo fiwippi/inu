@@ -4,7 +4,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 
-	"inu"
+	"inu/cid"
 )
 
 const InMemory string = "file::memory:"
@@ -33,7 +33,7 @@ func (s *Store) Close() error {
 	return s.pool.Close()
 }
 
-func (s *Store) Get(cid inu.CID) (Block, error) {
+func (s *Store) Get(cid cid.CID) (Block, error) {
 	var b Block
 	return b, s.pool.Get(&b, `SELECT cid, data FROM blocks WHERE cid = ? LIMIT 1`, cid)
 }
@@ -43,7 +43,7 @@ func (s *Store) Put(b Block) error {
 	return err
 }
 
-func (s *Store) Delete(cid inu.CID) error {
+func (s *Store) Delete(cid cid.CID) error {
 	_, err := s.pool.Exec(`DELETE FROM blocks WHERE cid = ?`, cid)
 	return err
 }

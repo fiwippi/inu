@@ -14,7 +14,7 @@ var peerStoreTestDefaultExpiry = 24 * time.Hour
 func TestPeerStore_Put(t *testing.T) {
 	s := newPeerStore(peerStoreTestDefaultExpiry)
 
-	k := newKey(1)
+	k := ParseUint64(1)
 
 	// Peer set created if it does not exist
 	ps1 := newTestPeer(1)
@@ -37,7 +37,7 @@ func TestPeerStore_Put(t *testing.T) {
 func TestPeerStore_Delete(t *testing.T) {
 	s := newPeerStore(peerStoreTestDefaultExpiry)
 
-	k := newKey(1)
+	k := ParseUint64(1)
 
 	// Successful put
 	ps := newTestPeer(1)
@@ -53,14 +53,14 @@ func TestPeerStore_Delete(t *testing.T) {
 func TestPeerStore_Get(t *testing.T) {
 	t.Run("key not found", func(t *testing.T) {
 		s := newPeerStore(peerStoreTestDefaultExpiry)
-		ps, err := s.Get(newKey(1))
+		ps, err := s.Get(ParseUint64(1))
 		require.ErrorContains(t, err, "key not found")
 		require.Nil(t, ps)
 	})
 
 	t.Run("all peers dead", func(t *testing.T) {
 		s := newPeerStore(peerStoreTestDefaultExpiry)
-		k := newKey(1)
+		k := ParseUint64(1)
 
 		s.Put(k, []Peer{{ASN: 1}, {ASN: 2}, {ASN: 3}, {ASN: 4}})
 		require.Contains(t, s.data, k)
@@ -78,7 +78,7 @@ func TestPeerStore_Get(t *testing.T) {
 
 	t.Run("some peers dead", func(t *testing.T) {
 		s := newPeerStore(peerStoreTestDefaultExpiry)
-		k := newKey(1)
+		k := ParseUint64(1)
 
 		dead1, dead2 := Peer{ASN: 1}, Peer{ASN: 2}
 		alive1 := Peer{ASN: 3, Published: time.Now().UTC()}
@@ -104,7 +104,7 @@ func TestPeerStore_Get(t *testing.T) {
 
 	t.Run("no peers dead", func(t *testing.T) {
 		s := newPeerStore(peerStoreTestDefaultExpiry)
-		k := newKey(1)
+		k := ParseUint64(1)
 		ps := []Peer{{ASN: 1, Published: time.Now().UTC()}}
 
 		s.Put(k, ps)
@@ -124,13 +124,13 @@ func TestPeerStore_GetAll(t *testing.T) {
 	expired := valid.Add(-25 * time.Hour)
 
 	pairs := []pair{
-		{K: newKey(1), P: []Peer{{ASN: 1, Published: valid}}},
-		{K: newKey(2), P: []Peer{{ASN: 2, Published: expired}}},
-		{K: newKey(3), P: []Peer{{ASN: 3, Published: valid}}},
-		{K: newKey(4), P: []Peer{{ASN: 4, Published: expired}}},
-		{K: newKey(5), P: []Peer{{ASN: 5, Published: valid}}},
-		{K: newKey(6), P: []Peer{{ASN: 6, Published: expired}}},
-		{K: newKey(7), P: []Peer{{ASN: 7, Published: valid}}},
+		{K: ParseUint64(1), P: []Peer{{ASN: 1, Published: valid}}},
+		{K: ParseUint64(2), P: []Peer{{ASN: 2, Published: expired}}},
+		{K: ParseUint64(3), P: []Peer{{ASN: 3, Published: valid}}},
+		{K: ParseUint64(4), P: []Peer{{ASN: 4, Published: expired}}},
+		{K: ParseUint64(5), P: []Peer{{ASN: 5, Published: valid}}},
+		{K: ParseUint64(6), P: []Peer{{ASN: 6, Published: expired}}},
+		{K: ParseUint64(7), P: []Peer{{ASN: 7, Published: valid}}},
 	}
 	for _, p := range pairs {
 		s.Put(p.K, p.P)

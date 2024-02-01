@@ -5,6 +5,7 @@ go 1.21
 require (
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/jmoiron/sqlx v1.3.5
+	github.com/lmittmann/tint v1.0.4
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.8.4
 	modernc.org/sqlite v1.27.0

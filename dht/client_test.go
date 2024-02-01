@@ -29,7 +29,7 @@ func TestClientConfig_JSON(t *testing.T) {
 
 func TestClient_FindPeers(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		k := newKey(1)
+		k := ParseUint64(1)
 		p := newTestPeer(1)
 
 		// Create the server and contacts
@@ -56,7 +56,7 @@ func TestClient_FindPeers(t *testing.T) {
 
 	t.Run("fail", func(t *testing.T) {
 		t.Run("response codes", func(t *testing.T) {
-			k := newKey(1)
+			k := ParseUint64(1)
 
 			for _, code := range []int{400, 404, 500} {
 				ts, dst := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -77,7 +77,7 @@ func TestClient_FindPeers(t *testing.T) {
 		})
 
 		t.Run("bad get response", func(t *testing.T) {
-			k := newKey(1)
+			k := ParseUint64(1)
 
 			// Create the server and contacts
 			ts, dst := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -101,8 +101,8 @@ func TestClient_FindPeers(t *testing.T) {
 }
 
 func TestClient_PutKey(t *testing.T) {
-	k := newKey(1)
-	uploadK := newKey(2)
+	k := ParseUint64(1)
+	uploadK := ParseUint64(2)
 
 	t.Run("success", func(t *testing.T) {
 		t.Run("has upload key", func(t *testing.T) {
@@ -155,7 +155,7 @@ func TestClient_PutKey(t *testing.T) {
 	})
 
 	t.Run("fail", func(t *testing.T) {
-		k := newKey(1)
+		k := ParseUint64(1)
 
 		for _, code := range []int{400, 404, 500} {
 			ts, dst := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -176,7 +176,7 @@ func TestClient_PutKey(t *testing.T) {
 }
 
 func TestIntegrationClient(t *testing.T) {
-	uploadKey := newKey(56)
+	uploadKey := ParseUint64(56)
 	client := NewClient(ClientConfig{
 		Port:      60,
 		Nodes:     []string{"127.0.0.1:3000"}, // Node A
@@ -209,7 +209,7 @@ func TestIntegrationClient(t *testing.T) {
 		B.rt.Unlock()
 	})
 
-	k := newKey(5)
+	k := ParseUint64(5)
 
 	t.Run("authed upload to A", func(t *testing.T) {
 		require.NoError(t, client.PutKey(k))

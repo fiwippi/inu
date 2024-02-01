@@ -10,13 +10,13 @@ import (
 
 func TestBucket_UpdateContact(t *testing.T) {
 	mRpc := &mockPingRpc{}
-	self := newKey(4)
-	b := newBucket(2, newKey(0), newKey(5))
+	self := ParseUint64(4)
+	b := newBucket(2, ParseUint64(0), ParseUint64(5))
 
 	// Define the contacts
-	c1 := Contact{ID: newKey(1), Address: "1"}
-	c1a := Contact{ID: newKey(1), Address: "11"}
-	c2 := Contact{ID: newKey(2), Address: "2"}
+	c1 := Contact{ID: ParseUint64(1), Address: "1"}
+	c1a := Contact{ID: ParseUint64(1), Address: "11"}
+	c2 := Contact{ID: ParseUint64(2), Address: "2"}
 
 	// Able to insert two values into empty bucket
 	t.Run("successful insert", func(t *testing.T) {
@@ -53,8 +53,8 @@ func TestBucket_UpdateContact(t *testing.T) {
 	t.Run("ping success (no split)", func(t *testing.T) {
 		// We don't split because self is out of range
 		mRpc.fail = false
-		c3 := Contact{ID: newKey(4), Address: "4"}
-		require.False(t, b.UpdateContact(c3, newKey(10), mRpc))
+		c3 := Contact{ID: ParseUint64(4), Address: "4"}
+		require.False(t, b.UpdateContact(c3, ParseUint64(10), mRpc))
 
 		require.Equal(t, c1a, b.element(0))
 		require.Equal(t, c2, b.element(1))
@@ -69,8 +69,8 @@ func TestBucket_UpdateContact(t *testing.T) {
 	t.Run("ping fail (no split)", func(t *testing.T) {
 		// We don't split because self is out of range
 		mRpc.fail = true
-		c4 := Contact{ID: newKey(4), Address: "4"}
-		require.False(t, b.UpdateContact(c4, newKey(10), mRpc))
+		c4 := Contact{ID: ParseUint64(4), Address: "4"}
+		require.False(t, b.UpdateContact(c4, ParseUint64(10), mRpc))
 
 		require.Equal(t, 2, b.contacts.Len())
 		require.Equal(t, c2, b.element(0))
@@ -82,7 +82,7 @@ func TestBucket_UpdateContact(t *testing.T) {
 	})
 
 	t.Run("should split", func(t *testing.T) {
-		c3 := Contact{ID: newKey(3), Address: "3"}
+		c3 := Contact{ID: ParseUint64(3), Address: "3"}
 		require.True(t, b.UpdateContact(c3, self, mRpc))
 	})
 }
@@ -90,12 +90,12 @@ func TestBucket_UpdateContact(t *testing.T) {
 func TestBucket_Split(t *testing.T) {
 	t.Run("split", func(t *testing.T) {
 		mRpc := &mockPingRpc{}
-		self := newKey(5)
-		b := newBucket(2, newKey(0), newKey(10))
+		self := ParseUint64(5)
+		b := newBucket(2, ParseUint64(0), ParseUint64(10))
 
 		// Define the contacts
-		c1 := Contact{ID: newKey(5)}
-		c2 := Contact{ID: newKey(6)}
+		c1 := Contact{ID: ParseUint64(5)}
+		c2 := Contact{ID: ParseUint64(6)}
 
 		// Insert the two contacts
 		require.False(t, b.UpdateContact(c1, self, mRpc))
@@ -104,11 +104,11 @@ func TestBucket_Split(t *testing.T) {
 		// Split the bucket
 		x, y := b.Split(self)
 		require.Len(t, x.elements, 1)
-		require.Equal(t, x.low, newKey(0))
-		require.Equal(t, x.high, newKey(5))
+		require.Equal(t, x.low, ParseUint64(0))
+		require.Equal(t, x.high, ParseUint64(5))
 		require.Len(t, y.elements, 1)
-		require.Equal(t, y.low, newKey(6))
-		require.Equal(t, y.high, newKey(10))
+		require.Equal(t, y.low, ParseUint64(6))
+		require.Equal(t, y.high, ParseUint64(10))
 
 		// Lower bucket should have 5, and upper 6
 		require.Contains(t, x.elements, c1.ID)
@@ -118,8 +118,8 @@ func TestBucket_Split(t *testing.T) {
 	t.Run("no overlap in keyspace", func(t *testing.T) {
 		// Create a bucket for the whole keyspace and split it
 		high := fromBigInt(new(big.Int).Exp(big.NewInt(2), big.NewInt(255), nil))
-		b := newBucket(1, newKey(0), high)
-		x, y := b.Split(newKey(5))
+		b := newBucket(1, ParseUint64(0), high)
+		x, y := b.Split(ParseUint64(5))
 
 		// The midpoints of each bucket should not overlap
 		// (i.e. y.low - x.high == 1, exactly one apart)
@@ -132,7 +132,7 @@ func TestBucket_Split(t *testing.T) {
 
 func TestRoutingTable_UpdateContact(t *testing.T) {
 	// Create the routing table
-	self := Contact{ID: newKey(5)}
+	self := Contact{ID: ParseUint64(5)}
 	rt := newRoutingTable(self, 2)
 
 	// Initialise the mock RPC
@@ -140,8 +140,8 @@ func TestRoutingTable_UpdateContact(t *testing.T) {
 		fail: false,
 	}
 
-	c1 := Contact{ID: newKey(1)}
-	c2 := Contact{ID: newKey(2)}
+	c1 := Contact{ID: ParseUint64(1)}
+	c2 := Contact{ID: ParseUint64(2)}
 	c3 := Contact{ID: fromBigInt(new(big.Int).Exp(big.NewInt(2), big.NewInt(250), nil))}
 
 	// Create contacts and update them in the routing table
@@ -169,7 +169,7 @@ func TestRoutingTable_UpdateContact(t *testing.T) {
 
 func TestRoutingTable_FindClosestNodes(t *testing.T) {
 	// Create the routing table
-	origin := Contact{ID: newKey(255)}
+	origin := Contact{ID: ParseUint64(255)}
 	rt := newRoutingTable(origin, 20)
 
 	// Initialise the mock RPC
@@ -186,8 +186,8 @@ func TestRoutingTable_FindClosestNodes(t *testing.T) {
 
 	// Our closest nodes to the origin should be
 	// the sorted order of these contacts
-	start := newKey(0)
-	target := newKey(1)
+	start := ParseUint64(0)
+	target := ParseUint64(1)
 	closest := rt.FindClosestNodes(&start, &target)
 	require.Equal(t, cs, closest)
 }
@@ -209,7 +209,7 @@ func (b *bucket) element(i int) Contact {
 func genContacts(n int) []Contact {
 	cs := make([]Contact, n)
 	for i := 1; i <= n; i++ {
-		cs[i-1] = Contact{ID: newKey(pow2(i))}
+		cs[i-1] = Contact{ID: ParseUint64(pow2(i))}
 	}
 
 	return cs

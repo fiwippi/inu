@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"inu"
+	"inu/cid"
 	"inu/merkle"
 	"inu/store"
 )
@@ -72,7 +72,7 @@ func TestResolution(t *testing.T) {
 	n, rs, err := fs.AddPath("../test")
 	require.NoError(t, err)
 	require.Len(t, rs, 2)
-	require.Equal(t, inu.CID(`LJTOZCE2G3ES4JNBUU5IBHKI6U5WF6YCPCQ6KAOYKH5UYKLKX2DQ`), n.Block().CID)
+	require.Equal(t, cid.CID(`LJTOZCE2G3ES4JNBUU5IBHKI6U5WF6YCPCQ6KAOYKH5UYKLKX2DQ`), n.Block().CID)
 
 	// Resolve to the root node for redcat.jpg
 	m, err := fs.ResolvePath(string(n.Block().CID) + "/redcat.jpg")

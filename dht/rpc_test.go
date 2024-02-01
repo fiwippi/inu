@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var rpcTestSrc = Contact{ID: newKey(2), Address: "fake:80"}
+var rpcTestSrc = Contact{ID: ParseUint64(2), Address: "fake:80"}
 
 var rpcTestSrcHeader = `{"id":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABA","address":"fake:80"}`
 
-var rpcTestSwarmKey = newKey(56)
+var rpcTestSwarmKey = ParseUint64(56)
 
 func TestRpc_Ping(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
@@ -56,7 +56,7 @@ func TestRpc_Ping(t *testing.T) {
 
 func TestRpc_Store(t *testing.T) {
 	// Create a pair
-	k := newKey(1)
+	k := ParseUint64(1)
 	p := newTestPeer(1)
 
 	t.Run("success", func(t *testing.T) {
@@ -120,10 +120,10 @@ func TestRpc_FindNode(t *testing.T) {
 
 		rpc := newRpc(rpcTestSrc, rpcTestSwarmKey)
 		rpc.(*rpcClient).client = ts.Client()
-		cs, err := rpc.FindNode(dst, newKey(2))
+		cs, err := rpc.FindNode(dst, ParseUint64(2))
 		require.NoError(t, err)
 		require.Equal(t, []Contact{{
-			ID:      newKey(2),
+			ID:      ParseUint64(2),
 			Address: "fake:80",
 		}}, cs)
 	})
@@ -174,7 +174,7 @@ func TestRpc_FindPeers(t *testing.T) {
 
 		rpc := newRpc(rpcTestSrc, rpcTestSwarmKey)
 		rpc.(*rpcClient).client = ts.Client()
-		resp, err := rpc.FindPeers(dst, newKey(2))
+		resp, err := rpc.FindPeers(dst, ParseUint64(2))
 		require.NoError(t, err)
 		require.Equal(t, fpr, resp)
 	})

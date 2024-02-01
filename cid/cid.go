@@ -1,4 +1,4 @@
-package inu
+package cid
 
 import (
 	"crypto/sha256"
@@ -7,7 +7,7 @@ import (
 
 type CID string
 
-func NewCID(data []byte) CID {
+func New(data []byte) CID {
 	// Digest the data
 	h := sha256.New()
 	h.Write(data)

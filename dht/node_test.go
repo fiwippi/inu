@@ -37,8 +37,8 @@ func TestNodeConfig_JSON(t *testing.T) {
 
 func TestNode_Bootstrap(t *testing.T) {
 	n := newTestNode(0, "3000")
-	bootstrapNode := Contact{ID: newKey(1), Address: "3001"} // Node we boostrap with
-	extraNode := Contact{ID: newKey(2), Address: "3002"}     // Node which the bootstrap node knows
+	bootstrapNode := Contact{ID: ParseUint64(1), Address: "3001"} // Node we boostrap with
+	extraNode := Contact{ID: ParseUint64(2), Address: "3002"}     // Node which the bootstrap node knows
 
 	reqNum := 0
 	n.rpc = &mockLookupRpc{
@@ -73,9 +73,9 @@ func TestNode_Bootstrap(t *testing.T) {
 
 func TestNode_Republish(t *testing.T) {
 	n := newTestNode(0, "3000")
-	m := Contact{ID: newKey(1), Address: "3001"}
+	m := Contact{ID: ParseUint64(1), Address: "3001"}
 
-	k := newKey(5)
+	k := ParseUint64(5)
 	p := []Peer{{ASN: 1, Published: time.Now().UTC().Add(time.Hour)}}
 	n.rpc = &mockLookupRpc{
 		fn: func(dst Contact, kk Key) ([]Contact, error) {
@@ -102,7 +102,7 @@ func TestNode_Republish(t *testing.T) {
 func TestNode_Refresh(t *testing.T) {
 	t.Run("no refresh", func(t *testing.T) {
 		n := newTestNode(0, "3000")
-		refreshedNode := Contact{ID: newKey(1), Address: "3001"}
+		refreshedNode := Contact{ID: ParseUint64(1), Address: "3001"}
 
 		reqNum := atomic.Int64{}
 		n.rpc = &mockLookupRpc{
@@ -127,8 +127,8 @@ func TestNode_Refresh(t *testing.T) {
 
 	t.Run("yes refresh", func(t *testing.T) {
 		n := newTestNode(0, "3000")
-		refreshedNode := Contact{ID: newKey(1), Address: "3001"}
-		newNode := Contact{ID: newKey(2), Address: "3002"}
+		refreshedNode := Contact{ID: ParseUint64(1), Address: "3001"}
+		newNode := Contact{ID: ParseUint64(2), Address: "3002"}
 
 		reqNum := atomic.Int64{}
 		n.rpc = &mockLookupRpc{
@@ -179,14 +179,14 @@ func TestNode_Ping(t *testing.T) {
 	t.Run("invalid Inu-Swarm", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/rpc/ping", nil)
 		rec := httptest.NewRecorder()
-		req.Header.Set("Inu-Swarm", newKey(6).MarshalB32())
+		req.Header.Set("Inu-Swarm", ParseUint64(6).MarshalB32())
 		mux.ServeHTTP(rec, req)
 		require.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
 
 	t.Run("routing table updated", func(t *testing.T) {
 		// Contact to be updated
-		src := Contact{ID: newKey(1)}
+		src := Contact{ID: ParseUint64(1)}
 
 		// Perform the request successfully
 		req := httptest.NewRequest("GET", "/rpc/ping", nil)
@@ -217,7 +217,7 @@ func TestNode_Store(t *testing.T) {
 
 	t.Run("valid pair", func(t *testing.T) {
 		// Encode the pair
-		p := pair{newKey(1), newTestPeer(1)}
+		p := pair{ParseUint64(1), newTestPeer(1)}
 		data, err := json.Marshal(p)
 		require.NoError(t, err)
 
@@ -252,7 +252,7 @@ func TestNode_FindNode(t *testing.T) {
 	}
 
 	// Encode the src contact, must have ID of 0
-	k := newKey(0)
+	k := ParseUint64(0)
 
 	// Perform the request successfully
 	req := httptest.NewRequest("GET", "/rpc/find-node/"+k.MarshalB32(), nil)
@@ -285,7 +285,7 @@ func TestNode_FindPeers(t *testing.T) {
 
 	t.Run("pair not found", func(t *testing.T) {
 		// Encode the src contact, must have ID of 0
-		k := newKey(0)
+		k := ParseUint64(0)
 
 		req := httptest.NewRequest("GET", "/rpc/find-peers/"+k.MarshalB32(), nil)
 		addInuSwarmHeaders(req, Contact{ID: k}, n.config.SwarmKey)
@@ -302,7 +302,7 @@ func TestNode_FindPeers(t *testing.T) {
 	t.Run("pair found", func(t *testing.T) {
 		// Insert a pair into the store with the
 		// same ID as our key (ID must be 0)
-		p := pair{newKey(1), newTestPeer(1)}
+		p := pair{ParseUint64(1), newTestPeer(1)}
 		n.peerStore.Put(p.K, p.P)
 
 		req := httptest.NewRequest("GET", "/rpc/find-peers/"+p.K.MarshalB32(), nil)
@@ -323,8 +323,8 @@ func TestNode_GetKey(t *testing.T) {
 		n := newTestNode(255, "3000")
 		mux := n.router()
 
-		n.updateContact(Contact{ID: newKey(32), Address: "3001"})
-		k := newKey(1)
+		n.updateContact(Contact{ID: ParseUint64(32), Address: "3001"})
+		k := ParseUint64(1)
 		p := newTestPeer(1)
 
 		n.rpc = &mockLookupRpc{fp: func(dst Contact, kk Key) (findPeersResp, error) {
@@ -342,7 +342,7 @@ func TestNode_GetKey(t *testing.T) {
 		})
 
 		t.Run("key not found", func(t *testing.T) {
-			k := newKey(0)
+			k := ParseUint64(0)
 			req := httptest.NewRequest("GET", "/key/"+k.MarshalB32(), nil)
 			rec := httptest.NewRecorder()
 			mux.ServeHTTP(rec, req)
@@ -378,8 +378,8 @@ func TestNode_GetKey(t *testing.T) {
 		n := newTestNode(255, "3000")
 		mux := n.router()
 
-		n.updateContact(Contact{ID: newKey(32), Address: "3001"})
-		k := newKey(1)
+		n.updateContact(Contact{ID: ParseUint64(32), Address: "3001"})
+		k := ParseUint64(1)
 
 		unsorted := []Peer{{ASN: 8}, {ASN: 5}, {ASN: 7}, {ASN: 5}, {ASN: 6}}
 		sorted := []Peer{{ASN: 5}, {ASN: 5}, {ASN: 8}, {ASN: 7}, {ASN: 6}}
@@ -405,10 +405,10 @@ func TestNode_GetKey(t *testing.T) {
 }
 
 func TestNode_PutKey(t *testing.T) {
-	k := newKey(22)
+	k := ParseUint64(22)
 	newNode := func() *Node {
 		conf := DefaultNodeConfig()
-		conf.UploadKey = newKey(32)
+		conf.UploadKey = ParseUint64(32)
 		return newTestNodeCustom(255, "3000", conf)
 	}
 
@@ -436,7 +436,7 @@ func TestNode_PutKey(t *testing.T) {
 
 		n := newNode()
 		n.config.UploadKey = Key{}
-		n.updateContact(Contact{ID: newKey(1)})
+		n.updateContact(Contact{ID: ParseUint64(1)})
 		n.rpc = &mockPingRpc{}
 
 		req := httptest.NewRequest("PUT", "/key/"+k.MarshalB32(), bytes.NewReader(data))
@@ -456,7 +456,7 @@ func TestNode_PutKey(t *testing.T) {
 		require.NoError(t, err)
 
 		n := newNode()
-		n.updateContact(Contact{ID: newKey(1)})
+		n.updateContact(Contact{ID: ParseUint64(1)})
 		n.rpc = &mockPingRpc{}
 
 		req := httptest.NewRequest("PUT", "/key/"+k.MarshalB32(), bytes.NewReader(data))
@@ -482,7 +482,7 @@ func TestNode_PutKey(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req.RemoteAddr = "192.168.0.1"
 		n.peerStore.Put(k, []Peer{{Port: 60, Published: time.Now().UTC()}})
-		n.updateContact(Contact{ID: newKey(1)})
+		n.updateContact(Contact{ID: ParseUint64(1)})
 		n.rpc = &mockPingRpc{}
 
 		n.router().ServeHTTP(rec, req)
@@ -506,7 +506,7 @@ func TestNode_PutKey(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req.RemoteAddr = host
 
-		c := Contact{ID: newKey(1)}
+		c := Contact{ID: ParseUint64(1)}
 		n.updateContact(c)
 		n.rpc = &mockLookupRpc{
 			fn: func(_ Contact, _ Key) ([]Contact, error) {
@@ -578,9 +578,9 @@ func TestIntegrationNode_BetweenDhtNodes(t *testing.T) {
 	// Define the values we will store on the network
 	pubTime := time.Now().UTC().Add(-5 * time.Second)
 
-	p1 := pair{K: newKey(21), P: []Peer{{ASN: 1, Published: pubTime}}}
-	p2 := pair{K: newKey(22), P: []Peer{{ASN: 2, Published: pubTime}}}
-	p3 := pair{K: newKey(23), P: []Peer{{ASN: 3, Published: pubTime}}}
+	p1 := pair{K: ParseUint64(21), P: []Peer{{ASN: 1, Published: pubTime}}}
+	p2 := pair{K: ParseUint64(22), P: []Peer{{ASN: 2, Published: pubTime}}}
+	p3 := pair{K: ParseUint64(23), P: []Peer{{ASN: 3, Published: pubTime}}}
 
 	// Store P1 on A
 	// Store P2 on B
@@ -711,7 +711,7 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 	// this test, because we want keys to only
 	// move around the network on request
 
-	uploadKey := newKey(56)
+	uploadKey := ParseUint64(56)
 	client := cert.Client(10 * time.Second)
 	localhost := netip.MustParseAddr("127.0.0.1")
 
@@ -741,7 +741,7 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 	})
 
 	// Authenticate an upload of the peer set to A
-	k := newKey(5)
+	k := ParseUint64(5)
 	var ps []Peer
 
 	t.Run("authed upload to A", func(t *testing.T) {
@@ -946,7 +946,7 @@ func TestIntegrationNode_Republishing(t *testing.T) {
 	C := newTestNode(pow2(3), "3003")
 
 	// Store the block in src
-	k := newKey(1)
+	k := ParseUint64(1)
 	ps := newTestPeer(1)
 	src.peerStore.Put(k, ps)
 
@@ -988,7 +988,7 @@ func TestLookup_Store(t *testing.T) {
 	stored := make(map[Key]int)
 	m := sync.Mutex{}
 
-	k := newKey(1)
+	k := ParseUint64(1)
 	p := newTestPeer(1)
 	src.rpc = &mockLookupRpc{
 		fn: func(dst Contact, kk Key) ([]Contact, error) {
@@ -1086,7 +1086,7 @@ func TestLookup_FindPeers(t *testing.T) {
 		A := newTestNode(pow2(4), "3002")
 
 		src.updateContact(A.self)
-		k := newKey(1)
+		k := ParseUint64(1)
 		p := []Peer{{ASN: 1}}
 		src.rpc = &mockLookupRpc{
 			fp: func(dst Contact, kk Key) (findPeersResp, error) {
@@ -1114,7 +1114,7 @@ func TestLookup_Errors(t *testing.T) {
 
 	t.Run("empty routing table", func(t *testing.T) {
 		src := newTestNodeCustom(pow2(63), "3000", conf)
-		resp, err := src.lookup(newKey(pow2(1)), findNodeLookup)
+		resp, err := src.lookup(ParseUint64(pow2(1)), findNodeLookup)
 		require.ErrorContains(t, err, "no close nodes")
 		require.Equal(t, resp, findPeersResp{})
 	})
@@ -1530,7 +1530,7 @@ func TestIntegrationLookup_Store(t *testing.T) {
 	// on the possible neighbours (these
 	// are the three at pre-exist in the
 	// routing table)
-	k := newKey(1)
+	k := ParseUint64(1)
 	ps := newTestPeer(1)
 	require.NoError(t, src.Store(k, ps))
 
@@ -1635,7 +1635,7 @@ func TestIntegrationLookup_FindPeers(t *testing.T) {
 		src := newTestNode(pow2(0), "3000")
 		A := newTestNode(pow2(1), "3001")
 
-		k := newKey(1)
+		k := ParseUint64(1)
 		p := newTestPeer(1)
 
 		// Update the routing table and store
@@ -1658,7 +1658,7 @@ func TestIntegrationLookup_FindPeers(t *testing.T) {
 		F := newTestNode(pow2(2), "3006")
 		target := newTestNode(pow2(0), "3008")
 
-		k := newKey(1)
+		k := ParseUint64(1)
 		p := newTestPeer(1)
 
 		// Src knows E
@@ -1698,7 +1698,7 @@ func TestIntegrationLookup_FindPeers(t *testing.T) {
 // Shortlist
 
 func TestShortlist_New(t *testing.T) {
-	target := newKey(0)
+	target := ParseUint64(0)
 	s := newShortlist(target, 20)
 	require.Equal(t, 20, s.k)
 	require.Equal(t, target, s.target)
@@ -1707,15 +1707,15 @@ func TestShortlist_New(t *testing.T) {
 }
 
 func TestShortlist_Insert(t *testing.T) {
-	target := newKey(0)
+	target := ParseUint64(0)
 
 	t.Run("restricted to k", func(t *testing.T) {
-		c1 := Contact{ID: newKey(1)}
-		c2 := Contact{ID: newKey(2)}
-		c3 := Contact{ID: newKey(3)}
-		c4 := Contact{ID: newKey(4)}
-		c5 := Contact{ID: newKey(5)}
-		c6 := Contact{ID: newKey(6)}
+		c1 := Contact{ID: ParseUint64(1)}
+		c2 := Contact{ID: ParseUint64(2)}
+		c3 := Contact{ID: ParseUint64(3)}
+		c4 := Contact{ID: ParseUint64(4)}
+		c5 := Contact{ID: ParseUint64(5)}
+		c6 := Contact{ID: ParseUint64(6)}
 
 		s := newShortlist(target, 5)
 		s.Insert(c5, c2, c3, c1, c6, c4)
@@ -1732,8 +1732,8 @@ func TestShortlist_Insert(t *testing.T) {
 
 	t.Run("deduplication", func(t *testing.T) {
 		s := newShortlist(target, 5)
-		c1 := Contact{ID: newKey(1)}
-		c2 := Contact{ID: newKey(2)}
+		c1 := Contact{ID: ParseUint64(1)}
+		c2 := Contact{ID: ParseUint64(2)}
 		s.Insert(c2, c1, c2, c1, c2, c1, c2, c1)
 		require.Len(t, s.list, 2)
 		require.Equal(t, c1, s.list[0])
@@ -1742,12 +1742,12 @@ func TestShortlist_Insert(t *testing.T) {
 }
 
 func TestShortlist_Remove(t *testing.T) {
-	target := newKey(0)
+	target := ParseUint64(0)
 
 	t.Run("does not exist", func(t *testing.T) {
 		s := newShortlist(target, 5)
-		c1 := Contact{ID: newKey(1)}
-		c2 := Contact{ID: newKey(2)}
+		c1 := Contact{ID: ParseUint64(1)}
+		c2 := Contact{ID: ParseUint64(2)}
 		s.Insert(c1)
 		s.Remove(c2)
 		require.Len(t, s.list, 1)
@@ -1756,7 +1756,7 @@ func TestShortlist_Remove(t *testing.T) {
 
 	t.Run("exists", func(t *testing.T) {
 		s := newShortlist(target, 5)
-		c1 := Contact{ID: newKey(1)}
+		c1 := Contact{ID: ParseUint64(1)}
 
 		// Insert c1
 		s.Insert(c1)
@@ -1773,17 +1773,17 @@ func TestShortlist_Remove(t *testing.T) {
 }
 
 func TestShortlist_SetContacted(t *testing.T) {
-	s := newShortlist(newKey(0), 5)
-	c1 := Contact{ID: newKey(1)}
+	s := newShortlist(ParseUint64(0), 5)
+	c1 := Contact{ID: ParseUint64(1)}
 	s.SetContacted(c1)
 	require.Contains(t, s.contacted, c1.ID)
 }
 
 func TestShortlist_AllContacted(t *testing.T) {
-	c1 := Contact{ID: newKey(1)}
-	c2 := Contact{ID: newKey(2)}
-	c3 := Contact{ID: newKey(3)}
-	c4 := Contact{ID: newKey(4)}
+	c1 := Contact{ID: ParseUint64(1)}
+	c2 := Contact{ID: ParseUint64(2)}
+	c3 := Contact{ID: ParseUint64(3)}
+	c4 := Contact{ID: ParseUint64(4)}
 
 	t.Run("stays all not contacted", func(t *testing.T) {
 		// Add all four contacts but only
@@ -1791,7 +1791,7 @@ func TestShortlist_AllContacted(t *testing.T) {
 		// remove the two contacted ones
 		// from the shortlist, the list
 		// should be not all contacted
-		s := newShortlist(newKey(0), 5)
+		s := newShortlist(ParseUint64(0), 5)
 		s.Insert(c1, c2, c3, c4)
 		s.SetContacted(c1, c2)
 		s.Remove(c1, c2)
@@ -1799,7 +1799,7 @@ func TestShortlist_AllContacted(t *testing.T) {
 	})
 
 	t.Run("all contacted", func(t *testing.T) {
-		s := newShortlist(newKey(0), 5)
+		s := newShortlist(ParseUint64(0), 5)
 		s.Insert(c1, c2)
 		s.SetContacted(c1, c2)
 		require.True(t, s.AllContacted())
@@ -1813,7 +1813,7 @@ func newTestNode(k uint64, port string) *Node {
 }
 
 func newTestNodeCustom(k uint64, port string, c NodeConfig) *Node {
-	c.ID = newKey(k)
+	c.ID = ParseUint64(k)
 	c.Host = ""
 	p, err := strconv.Atoi(port)
 	if err != nil {

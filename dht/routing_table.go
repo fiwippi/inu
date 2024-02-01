@@ -88,7 +88,7 @@ func (b *bucket) UpdateContact(c Contact, self Key, rpc rpc) bool {
 	dst := b.contacts.Front().Value.(Contact)
 	err := rpc.Ping(dst)
 	if err != nil {
-		slog.Error("failed to ping the lrs node", slog.Any("err", err))
+		slog.Error("Failed to ping the lrs node", slog.Any("err", err))
 
 		// Discard the LRS node and insert the sender
 		// at the tail

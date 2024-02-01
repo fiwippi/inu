@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"inu"
+	"inu/cid"
 	"inu/merkle"
 	"inu/store"
 )
@@ -15,7 +15,7 @@ const NumChildren = 2
 const ChunkSize = 256 * 1024
 
 type Record struct {
-	CID  inu.CID
+	CID  cid.CID
 	Path string
 }
 
@@ -222,10 +222,10 @@ func (fs *FS) ResolvePath(path string) (merkle.Node, error) {
 	}
 
 	// Begin resolving the path
-	return fs.resolvePath(inu.CID(parts[0]), parts[1:])
+	return fs.resolvePath(cid.CID(parts[0]), parts[1:])
 }
 
-func (fs *FS) resolvePath(cid inu.CID, parts []string) (merkle.Node, error) {
+func (fs *FS) resolvePath(cid cid.CID, parts []string) (merkle.Node, error) {
 	// Get the node for the CID
 	b, err := fs.store.Get(cid)
 	if err != nil {
