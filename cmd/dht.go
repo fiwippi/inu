@@ -76,7 +76,6 @@ func parseNode(cmd *cobra.Command) (*dht.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	c := dht.DefaultNodeConfig()
 	if configPath != "" {
 		data, err := os.ReadFile(configPath)
@@ -86,6 +85,20 @@ func parseNode(cmd *cobra.Command) (*dht.Node, error) {
 		if err := json.Unmarshal(data, &c); err != nil {
 			return nil, err
 		}
+	}
+
+	// Override the config file with ENV vars if applicable
+	nodeID := os.Getenv("NODE_ID")
+	if nodeID != "" {
+		k := dht.Key{}
+		if err := k.UnmarshalB32(nodeID); err != nil {
+			return nil, err
+		}
+		c.ID = k
+	}
+	altHost := os.Getenv("NODE_ALT_HOST")
+	if altHost != "" {
+		c.AltHost = altHost
 	}
 
 	// Create the node

@@ -25,8 +25,9 @@ import (
 
 type NodeConfig struct {
 	// HTTP
-	Host string `json:"host"`
-	Port uint16 `json:"port"`
+	Host    string `json:"host"`
+	AltHost string `json:"alt_host"` // Used for contact info if set
+	Port    uint16 `json:"port"`
 
 	// Kademlia settings
 	ID           Key           `json:"id"`
@@ -43,7 +44,7 @@ type NodeConfig struct {
 
 func DefaultNodeConfig() NodeConfig {
 	return NodeConfig{
-		Host:         "localhost",
+		Host:         "0.0.0.0",
 		Port:         3000,
 		ID:           Key{},
 		Alpha:        3,
@@ -81,9 +82,13 @@ type Node struct {
 
 func NewNode(config NodeConfig) (*Node, error) {
 	// Create the self contact
+	contactHost := config.Host
+	if config.AltHost != "" {
+		contactHost = config.AltHost
+	}
 	self := Contact{
 		ID:      config.ID,
-		Address: fmt.Sprintf("%s:%d", config.Host, config.Port),
+		Address: fmt.Sprintf("%s:%d", contactHost, config.Port),
 	}
 
 	// Create the node
@@ -100,7 +105,7 @@ func NewNode(config NodeConfig) (*Node, error) {
 
 	// Create the HTTP server the node serves data from
 	n.server = &http.Server{
-		Addr:      n.self.Address,
+		Addr:      fmt.Sprintf("%s:%d", config.Host, config.Port),
 		Handler:   n.router(),
 		TLSConfig: cert.Config(),
 	}
@@ -819,6 +824,10 @@ func (n *Node) FindPeers(k Key) ([]Peer, error) {
 	if !resp.Found {
 		return nil, fmt.Errorf("could not find peers who provide key")
 	}
+
+	// Cache these peers ourselves
+	n.peerStore.Put(k, resp.Peers)
+
 	return resp.Peers, nil
 }
 

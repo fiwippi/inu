@@ -131,7 +131,6 @@ func parsePeerConfig(cmd *cobra.Command) (dht.ClientConfig, error) {
 	if err != nil {
 		return dht.ClientConfig{}, err
 	}
-
 	c := dht.DefaultClientConfig()
 	if configPath != "" {
 		data, err := os.ReadFile(configPath)
@@ -141,6 +140,15 @@ func parsePeerConfig(cmd *cobra.Command) (dht.ClientConfig, error) {
 		if err := json.Unmarshal(data, &c); err != nil {
 			return dht.ClientConfig{}, err
 		}
+	}
+
+	clientNodes := os.Getenv("CLIENT_NODES")
+	if clientNodes != "" {
+		var nodes []string
+		if err := json.Unmarshal([]byte(clientNodes), &nodes); err != nil {
+			return dht.ClientConfig{}, err
+		}
+		c.Nodes = nodes
 	}
 
 	return c, nil

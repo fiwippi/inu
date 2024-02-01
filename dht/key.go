@@ -82,14 +82,21 @@ func (k *Key) UnmarshalB32(s string) error {
 }
 
 func (k Key) MarshalJSON() ([]byte, error) {
+	if k == (Key{}) {
+		return []byte("null"), nil
+	}
 	return json.Marshal(k.MarshalB32())
 }
 
 func (k *Key) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*k = Key{}
+		return nil
+	}
+
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-
 	return k.UnmarshalB32(s)
 }

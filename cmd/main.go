@@ -22,6 +22,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(dhtCmd)
+	rootCmd.AddCommand(keyCmd)
 	rootCmd.AddCommand(peerCmd)
 }
 

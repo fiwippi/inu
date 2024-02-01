@@ -17,7 +17,6 @@ type API struct {
 }
 
 func NewAPI(c dht.ClientConfig) (*API, error) {
-
 	conn, err := tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", c.Port+1000), cert.Config())
 	if err != nil {
 		return nil, err

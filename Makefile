@@ -4,9 +4,16 @@ build:
 
 .PHONY: test
 test:
-	go test ./... -v
+	go test ./... -race -p 1
 
 .PHONY: clean
 clean:
 	rm -rf ./bin
+	rm -rf scratch
 	rm -f inu.db
+	go clean -testcache
+
+.PHONY: play
+play:
+	mkdir scratch
+	docker compose up --build

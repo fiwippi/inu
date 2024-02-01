@@ -35,6 +35,22 @@ func TestNodeConfig_JSON(t *testing.T) {
 
 // Nodes
 
+func TestNode_AltHost(t *testing.T) {
+	t.Run("no alt host", func(t *testing.T) {
+		n, err := NewNode(DefaultNodeConfig())
+		require.NoError(t, err)
+		require.Equal(t, Contact{Address: "0.0.0.0:3000"}, n.self)
+	})
+
+	t.Run("alt host", func(t *testing.T) {
+		c := DefaultNodeConfig()
+		c.AltHost = "alt"
+		n, err := NewNode(c)
+		require.NoError(t, err)
+		require.Equal(t, Contact{Address: "alt:3000"}, n.self)
+	})
+}
+
 func TestNode_Bootstrap(t *testing.T) {
 	n := newTestNode(0, "3000")
 	bootstrapNode := Contact{ID: ParseUint64(1), Address: "3001"} // Node we boostrap with
@@ -808,7 +824,7 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 		_, err := C.peerStore.Get(k)
 		require.ErrorContains(t, err, "key not found")
 
-		// GET to A for the key
+		// GET to C for the key
 		url := "https://" + C.self.Address + "/key/" + k.MarshalB32()
 		req, err := http.NewRequest("GET", url, nil)
 		require.NoError(t, err)
