@@ -45,7 +45,7 @@ func newRpc(c Contact, swarmKey Key) rpc {
 	}
 
 	return &rpcClient{
-		client:      cert.Client(120 * time.Second),
+		client:      cert.Client(20 * time.Second),
 		srcHeader:   string(h),
 		swarmHeader: swarmKey.MarshalB32(),
 	}

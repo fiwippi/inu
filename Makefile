@@ -1,19 +1,21 @@
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -o ./bin/inu cmd/*
+	CGO_ENABLED=0 go build -o ./bin/inu cmd/inu/*
+	CGO_ENABLED=0 go build -o ./bin/evaluate cmd/evaluate/*
+
+.PHONY: clean
+clean:
+	rm -rf bin
+	go clean -testcache
 
 .PHONY: test
 test:
 	go test ./... -race -p 1
 
-.PHONY: clean
-clean:
-	rm -rf ./bin
-	rm -rf scratch
-	rm -f inu.db
-	go clean -testcache
+.PHONY: image
+image:
+	docker image build . -t inu:latest
 
-.PHONY: play
-play:
-	mkdir scratch
-	docker compose up --build
+.PHONY: evaluate
+evaluate: build
+	./bin/evaluate -k-var=true -alpha-var=true

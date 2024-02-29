@@ -145,7 +145,7 @@ func (b *bucket) Split(self Key) (bucket, bucket) {
 // Routing Table
 
 type routingTable struct {
-	sync.Mutex
+	sync.RWMutex
 
 	k       int
 	self    Contact
@@ -209,8 +209,8 @@ func (rt *routingTable) UpdateContact(c Contact, rpc rpc) {
 }
 
 func (rt *routingTable) FindClosestNodes(k, exclude *Key) []Contact {
-	rt.Lock()
-	defer rt.Unlock()
+	rt.RLock()
+	defer rt.RUnlock()
 
 	// Linear scan the whole table and calculate the
 	// distance from the target contact to each other

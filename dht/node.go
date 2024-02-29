@@ -3,9 +3,11 @@ package dht
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -55,6 +57,16 @@ func DefaultNodeConfig() NodeConfig {
 		SwarmKey:     Key{},
 		UploadKey:    Key{},
 	}
+}
+
+func (c NodeConfig) WithPort(p uint16) NodeConfig {
+	c.Port = p
+	return c
+}
+
+func (c NodeConfig) WithID(k Key) NodeConfig {
+	c.ID = k
+	return c
 }
 
 // Node
@@ -113,13 +125,18 @@ func NewNode(config NodeConfig) (*Node, error) {
 	return n, nil
 }
 
-func (n *Node) Start() {
+func (n *Node) Start() error {
 	slog.Info("Starting DHT node", slog.Any("id", n.self.ID), slog.String("address", n.self.Address))
+
+	l, err := net.Listen("tcp", n.self.Address)
+	if err != nil {
+		return err
+	}
 
 	// Start the server
 	go func() {
-		if err := n.server.ListenAndServeTLS("", ""); err != nil {
-			if err != http.ErrServerClosed {
+		if err := n.server.ServeTLS(l, "", ""); err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
 				slog.Error("Node execution failed", slog.Any("err", err))
 				os.Exit(1)
 			}
@@ -129,10 +146,12 @@ func (n *Node) Start() {
 	// Start each long-running task
 	go n.refresh()
 	go n.republish()
+
+	return nil
 }
 
 func (n *Node) Stop() error {
-	defer slog.Info("DHT stopped")
+	defer slog.Info("DHT stopped", slog.Any("id", n.self.ID), slog.String("address", n.self.Address))
 
 	// Stop long-running tasks
 	n.stopRefresh <- struct{}{}
@@ -203,7 +222,7 @@ func (n *Node) refresh() {
 
 			// Pick an ID from each bucket
 			cs := make([]Contact, 0)
-			n.rt.Lock()
+			n.rt.RLock()
 			for _, b := range n.rt.buckets {
 				x := time.Since(b.lastUpdated) > time.Hour
 				y := b.contacts.Len() > 0
@@ -211,7 +230,7 @@ func (n *Node) refresh() {
 					cs = append(cs, b.contacts.Front().Value.(Contact))
 				}
 			}
-			n.rt.Unlock()
+			n.rt.RUnlock()
 
 			// Lookup each ID on the network and refresh
 			// its bucket with any nodes found
@@ -227,7 +246,7 @@ func (n *Node) refresh() {
 				}
 			}
 		case <-n.stopRefresh:
-			slog.Info("Done refreshing")
+			slog.Debug("Done refreshing")
 			return
 		}
 	}
@@ -249,7 +268,7 @@ func (n *Node) republish() {
 				}
 			}
 		case <-n.stopRepublish:
-			slog.Info("Done republishing")
+			slog.Debug("Done republishing")
 			return
 		}
 	}
@@ -386,7 +405,11 @@ func parseSrc(n *Node) func(http.Handler) http.Handler {
 			}
 
 			// Update the routing table
-			n.updateContact(c)
+			//
+			// This is run in a separate goroutine since
+			// it is a major source of contention and blocks
+			// other requests from responding
+			go n.updateContact(c)
 
 			// Add the source to the context
 			// and serve the next request with
@@ -648,6 +671,7 @@ func (n *Node) lookup(k Key, lk lookupKind) (findPeersResp, error) {
 					defer close(done)
 
 					// Send the RPC
+					// (the timeout is handled by the RPC client)
 					switch lk {
 					case findNodeLookup:
 						cs, err := n.rpc.FindNode(c, k)
@@ -706,15 +730,7 @@ func (n *Node) lookup(k Key, lk lookupKind) (findPeersResp, error) {
 					}
 				}()
 
-				// If we are unable to reach a contact in time
-				// then we remove it from consideration until
-				// we receive a reply from it
-				select {
-				case <-time.After(5 * time.Second):
-					slog.Warn("node timed out", slog.Any("contact", c))
-					closest.Remove(c)
-				case <-done:
-				}
+				<-done
 			}()
 		}
 
