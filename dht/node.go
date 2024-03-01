@@ -72,11 +72,8 @@ func (c NodeConfig) WithID(k Key) NodeConfig {
 // Node
 
 type Node struct {
-	server *http.Server
-
-	// Task accounting
-	stopRefresh   chan struct{}
-	stopRepublish chan struct{}
+	// Node/Kademlia config
+	config NodeConfig
 
 	// Kademlia data
 	self      Contact       // The node's own contact info
@@ -84,12 +81,23 @@ type Node struct {
 	rt        *routingTable // Routing table for the DHT
 	peerStore *peerStore
 
+	// HTTP RPC server
+	server *http.Server
+
+	// Long-running tasks accounting
+	stopRefresh      chan struct{}
+	ackStopRefresh   chan struct{}
+	stopRepublish    chan struct{}
+	ackStopRepublish chan struct{}
+
+	// Shutdown accounting
+	inShutdown      atomic.Bool
+	shutdown        atomic.Bool
+	inflateShutdown time.Duration // Hack for testing
+
 	// ASN routing data
 	asnTrie *trieNode
 	asnMut  sync.RWMutex
-
-	// Node/Kademlia config
-	config NodeConfig
 }
 
 func NewNode(config NodeConfig) (*Node, error) {
@@ -105,14 +113,16 @@ func NewNode(config NodeConfig) (*Node, error) {
 
 	// Create the node
 	n := &Node{
-		self:          self,
-		rpc:           newRpc(self, config.SwarmKey),
-		rt:            newRoutingTable(self, config.K),
-		peerStore:     newPeerStore(config.Expiry),
-		asnTrie:       new(trieNode),
-		config:        config,
-		stopRefresh:   make(chan struct{}),
-		stopRepublish: make(chan struct{}),
+		self:             self,
+		rpc:              newRpc(self, config.SwarmKey),
+		rt:               newRoutingTable(self, config.K),
+		peerStore:        newPeerStore(config.Expiry),
+		asnTrie:          new(trieNode),
+		config:           config,
+		stopRefresh:      make(chan struct{}),
+		ackStopRefresh:   make(chan struct{}),
+		stopRepublish:    make(chan struct{}),
+		ackStopRepublish: make(chan struct{}),
 	}
 
 	// Create the HTTP server the node serves data from
@@ -151,14 +161,41 @@ func (n *Node) Start() error {
 }
 
 func (n *Node) Stop() error {
-	defer slog.Info("DHT stopped", slog.Any("id", n.self.ID), slog.String("address", n.self.Address))
+	// If we've already shutdown then exit
+	if n.shutdown.Load() {
+		slog.Warn("DHT already shut down", slog.Any("id", n.self.ID), slog.String("address", n.self.Address))
+		return nil
+	}
+
+	// If we are already shutting down in another
+	// goroutine then wait until we have shut down
+	if !n.inShutdown.CompareAndSwap(false, true) {
+		slog.Warn("DHT already shutting down", slog.Any("id", n.self.ID), slog.String("address", n.self.Address))
+		for !n.shutdown.Load() {
+			time.Sleep(50 * time.Millisecond)
+		}
+		return nil
+	}
+
+	defer func() {
+		n.shutdown.Store(true)
+		slog.Info("DHT stopped", slog.Any("id", n.self.ID), slog.String("address", n.self.Address))
+	}()
 
 	// Stop long-running tasks
 	n.stopRefresh <- struct{}{}
+	<-n.ackStopRefresh
+	close(n.stopRefresh)
+	close(n.ackStopRefresh)
 	n.stopRepublish <- struct{}{}
+	<-n.ackStopRepublish
+	close(n.stopRepublish)
+	close(n.ackStopRepublish)
+
+	time.Sleep(n.inflateShutdown)
 
 	// Stop the server
-	return n.server.Shutdown(context.Background())
+	return n.server.Close()
 }
 
 func (n *Node) Contact() Contact {
@@ -246,7 +283,9 @@ func (n *Node) refresh() {
 				}
 			}
 		case <-n.stopRefresh:
+			t.Stop()
 			slog.Debug("Done refreshing")
+			n.ackStopRefresh <- struct{}{}
 			return
 		}
 	}
@@ -268,7 +307,9 @@ func (n *Node) republish() {
 				}
 			}
 		case <-n.stopRepublish:
+			t.Stop()
 			slog.Debug("Done republishing")
+			n.ackStopRepublish <- struct{}{}
 			return
 		}
 	}

@@ -16,7 +16,10 @@ var (
 	Key []byte
 )
 
-func Config() *tls.Config {
+var config *tls.Config
+
+func init() {
+	// Create the TLS config
 	tlsCert, err := tls.X509KeyPair(Pem, Key)
 	if err != nil {
 		panic(err)
@@ -25,21 +28,25 @@ func Config() *tls.Config {
 	certPool := x509.NewCertPool()
 	certPool.AppendCertsFromPEM(Pem)
 
-	return &tls.Config{
+	config = &tls.Config{
 		ServerName:   "localhost",
 		Certificates: []tls.Certificate{tlsCert},
 		RootCAs:      certPool,
 	}
 }
 
-func Client(timeout time.Duration) *http.Client {
-	certPool := x509.NewCertPool()
-	certPool.AppendCertsFromPEM(Pem)
+func Config() *tls.Config {
+	return config.Clone()
+}
 
+func Client(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
-			TLSClientConfig: Config(),
+			TLSClientConfig:     Config(),
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: http.DefaultMaxIdleConnsPerHost,
+			IdleConnTimeout:     90 * time.Second,
 		},
 	}
 }

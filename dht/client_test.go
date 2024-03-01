@@ -188,13 +188,13 @@ func TestIntegrationClient(t *testing.T) {
 	A := newTestNode(pow2(0), "3000")
 	A.config.UploadKey = uploadKey
 	require.NoError(t, A.UpdateASN(netip.PrefixFrom(localhost, 1), 1))
-	A.Start()
+	require.NoError(t, A.Start())
 	defer A.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 
 	// Add node B, ID = 2
 	B := newTestNode(pow2(1), "3001")
-	B.Start()
+	require.NoError(t, B.Start())
 	defer B.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 	require.NoError(t, B.Bootstrap(A.self))

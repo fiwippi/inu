@@ -35,6 +35,45 @@ func TestNodeConfig_JSON(t *testing.T) {
 
 // Nodes
 
+func TestNode_IdempotentStop(t *testing.T) {
+	// Want to see that we can:
+	//   1. Call Stop() from multiple goroutine
+	//   2. All goroutines wait until the node is shut down
+
+	n := newTestNode(0, "3000")
+	n.inflateShutdown = 10 * time.Second
+	require.NoError(t, n.Start())
+
+	mu := sync.Mutex{}
+	timeFinished := make([]time.Time, 0)
+
+	wg := sync.WaitGroup{}
+	for range 7 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			require.NoError(t, n.Stop())
+
+			finished := time.Now()
+			mu.Lock()
+			timeFinished = append(timeFinished, finished)
+			mu.Unlock()
+		}()
+
+		time.Sleep(1 * time.Second)
+	}
+	wg.Wait()
+
+	// Even though the goroutines initiate stop
+	// at different times they should all finish
+	// within 50 milliseconds of each other
+	mu.Lock()
+	for _, tf := range timeFinished[1:] {
+		require.WithinDuration(t, timeFinished[0], tf, 50*time.Millisecond)
+	}
+	mu.Unlock()
+}
+
 func TestNode_AltHost(t *testing.T) {
 	t.Run("no alt host", func(t *testing.T) {
 		n, err := NewNode(DefaultNodeConfig())
@@ -212,10 +251,23 @@ func TestNode_Ping(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code)
 
 		// Contact should be updated in the routing table
-		// in the first (only) bucket
-		b := &n.rt.buckets[0]
-		require.Equal(t, 1, b.contacts.Len())
-		require.Equal(t, src.ID, b.contacts.Front().Value.(Contact).ID)
+		// in the first (only) bucket within a few seconds.
+		// (The update runs in a goroutine which is separate
+		// from the PING handler)
+		require.Eventually(t, func() bool {
+			n.rt.Lock()
+			defer n.rt.Unlock()
+
+			b := &n.rt.buckets[0]
+
+			if b.contacts.Len() != 1 {
+				return false
+			}
+			if src.ID != b.contacts.Front().Value.(Contact).ID {
+				return false
+			}
+			return true
+		}, 3*time.Second, 1*time.Second)
 	})
 }
 
@@ -559,20 +611,20 @@ func TestIntegrationNode_BetweenDhtNodes(t *testing.T) {
 	aConf.RefreshDur = 10 * time.Second
 
 	A := newTestNodeCustom(pow2(0), "3000", aConf)
-	A.Start()
+	require.NoError(t, A.Start())
 	defer A.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 
 	// Add node B, ID = 2
 	B := newTestNode(pow2(1), "3001")
-	B.Start()
+	require.NoError(t, B.Start())
 	defer B.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 	require.NoError(t, B.Bootstrap(A.self))
 
 	// Add node C, ID = 4
 	C := newTestNode(pow2(2), "3002")
-	C.Start()
+	require.NoError(t, C.Start())
 	defer C.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 	require.NoError(t, C.Bootstrap(A.self))
@@ -616,14 +668,14 @@ func TestIntegrationNode_BetweenDhtNodes(t *testing.T) {
 
 	// Add node D, ID = 8
 	D := newTestNode(pow2(3), "3003")
-	D.Start()
+	require.NoError(t, D.Start())
 	defer D.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 	require.NoError(t, D.Bootstrap(B.self))
 
 	// Add node E, ID = 16
 	E := newTestNode(pow2(4), "3004")
-	E.Start()
+	require.NoError(t, E.Start())
 	defer E.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 	require.NoError(t, E.Bootstrap(B.self))
@@ -671,7 +723,7 @@ func TestIntegrationNode_BetweenDhtNodes(t *testing.T) {
 	F := newTestNode(pow2(32), "3032")
 	G := newTestNode(pow2(33), "3033")
 	for _, n := range []*Node{F, G} {
-		n.Start()
+		require.NoError(t, n.Start())
 		defer n.Stop()
 	}
 	time.Sleep(1 * time.Second) // Wait for node to start
@@ -735,13 +787,13 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 	A := newTestNode(pow2(0), "3000")
 	A.config.UploadKey = uploadKey
 	require.NoError(t, A.UpdateASN(netip.PrefixFrom(localhost, 1), 1))
-	A.Start()
+	require.NoError(t, A.Start())
 	defer A.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 
 	// Add node B, ID = 2
 	B := newTestNode(pow2(1), "3001")
-	B.Start()
+	require.NoError(t, B.Start())
 	defer B.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 	require.NoError(t, B.Bootstrap(A.self))
@@ -794,7 +846,7 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 
 	// Add node C, ID = 4
 	C := newTestNode(pow2(2), "3002")
-	C.Start()
+	require.NoError(t, C.Start())
 	defer C.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 	require.NoError(t, C.Bootstrap(B.self))
@@ -840,7 +892,7 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 	// Add node D, ID = 8
 	D := newTestNode(pow2(3), "3003")
 	require.NoError(t, D.UpdateASN(netip.PrefixFrom(localhost, 1), 2))
-	D.Start()
+	require.NoError(t, D.Start())
 	defer D.Stop()
 	time.Sleep(1 * time.Second) // Wait for node to start
 	require.NoError(t, D.Bootstrap(C.self))
@@ -940,7 +992,7 @@ func TestIntegrationNode_Refreshing(t *testing.T) {
 	// Set up the servers
 	src.rt.UpdateContact(A.self, src.rpc)
 	for _, n := range []*Node{src, A} {
-		n.Start()
+		require.NoError(t, n.Start())
 		defer n.Stop()
 	}
 
@@ -973,7 +1025,7 @@ func TestIntegrationNode_Republishing(t *testing.T) {
 
 	// Set up the servers
 	for _, n := range []*Node{src, A, B, C} {
-		n.Start()
+		require.NoError(t, n.Start())
 		defer n.Stop()
 	}
 
@@ -1537,7 +1589,7 @@ func TestIntegrationLookup_Store(t *testing.T) {
 
 	// Set up the servers
 	for _, n := range []*Node{src, A, B, C} {
-		n.Start()
+		require.NoError(t, n.Start())
 		defer n.Stop()
 	}
 	time.Sleep(1 * time.Second)
@@ -1571,7 +1623,7 @@ func TestIntegrationLookup_FindNode(t *testing.T) {
 		src := newTestNode(pow2(0), "3000")
 		target := newTestNode(pow2(2), "3001")
 
-		target.Start()
+		require.NoError(t, target.Start())
 		defer target.Stop()
 		time.Sleep(1 * time.Second)
 
@@ -1625,7 +1677,7 @@ func TestIntegrationLookup_FindNode(t *testing.T) {
 
 		// Set up the servers
 		for _, n := range []*Node{src, A, B, C, D, E, F, G, target} {
-			n.Start()
+			require.NoError(t, n.Start())
 			defer n.Stop()
 		}
 
@@ -1655,7 +1707,7 @@ func TestIntegrationLookup_FindPeers(t *testing.T) {
 		p := newTestPeer(1)
 
 		// Update the routing table and store
-		A.Start()
+		require.NoError(t, A.Start())
 		defer A.Stop()
 		time.Sleep(1 * time.Second)
 
@@ -1689,7 +1741,7 @@ func TestIntegrationLookup_FindPeers(t *testing.T) {
 
 		// Set up the servers
 		for _, n := range []*Node{src, E, F, target} {
-			n.Start()
+			require.NoError(t, n.Start())
 			defer n.Stop()
 		}
 

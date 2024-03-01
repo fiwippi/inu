@@ -47,10 +47,10 @@ func TestAPI_Upload_Download(t *testing.T) {
 	dhtA := createDHT(t, 0, 3000)
 	dhtB := createDHT(t, 1, 3001)
 
-	dhtA.Start()
+	require.NoError(t, dhtA.Start())
 	defer dhtA.Stop()
 	time.Sleep(1 * time.Second)
-	dhtB.Start()
+	require.NoError(t, dhtB.Start())
 	defer dhtB.Stop()
 	time.Sleep(1 * time.Second)
 	require.NoError(t, dhtB.Bootstrap(dhtA.Contact()))
