@@ -74,6 +74,11 @@ func TestNode_IdempotentStop(t *testing.T) {
 	mu.Unlock()
 }
 
+func TestNode_CanStopIfNotStarted(t *testing.T) {
+	n := newTestNode(0, "3000")
+	require.NoError(t, n.Stop())
+}
+
 func TestNode_AltHost(t *testing.T) {
 	t.Run("no alt host", func(t *testing.T) {
 		n, err := NewNode(DefaultNodeConfig())

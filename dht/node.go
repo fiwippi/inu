@@ -90,7 +90,8 @@ type Node struct {
 	stopRepublish    chan struct{}
 	ackStopRepublish chan struct{}
 
-	// Shutdown accounting
+	// Startup/Shutdown accounting
+	started         atomic.Bool
 	inShutdown      atomic.Bool
 	shutdown        atomic.Bool
 	inflateShutdown time.Duration // Hack for testing
@@ -142,6 +143,7 @@ func (n *Node) Start() error {
 	if err != nil {
 		return err
 	}
+	defer n.started.Store(true)
 
 	// Start the server
 	go func() {
@@ -161,6 +163,12 @@ func (n *Node) Start() error {
 }
 
 func (n *Node) Stop() error {
+	// Don't attempt to shut down if the node
+	// hasn't started the listener and goroutines
+	if !n.started.Load() {
+		return nil
+	}
+
 	// If we've already shutdown then exit
 	if n.shutdown.Load() {
 		slog.Warn("DHT already shut down", slog.Any("id", n.self.ID), slog.String("address", n.self.Address))
