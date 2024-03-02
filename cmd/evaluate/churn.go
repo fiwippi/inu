@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,48 +16,9 @@ import (
 
 const clearLine = "\033[2K\r"
 
-var (
-	newIP    = make(chan string)
-	returnIP = make(chan string)
-)
-
-func init() {
-	r, err := cidrRange("10.41.0.0/16")
-	if err != nil {
-		panic(err)
-	}
-	ipLock := sync.Mutex{}
-
-	go func() {
-		for {
-			// This does not protect against cases where
-			// we have no more IPs to allocate!
-			ipLock.Lock()
-			ip := r[0]
-			r = r[1:]
-			ipLock.Unlock()
-
-			select {
-			case newIP <- ip:
-			}
-		}
-	}()
-
-	go func() {
-		for {
-			select {
-			case ip := <-returnIP:
-				ipLock.Lock()
-				r = append(r, ip)
-				ipLock.Unlock()
-			}
-		}
-	}()
-}
-
 // Churn simulation
 
-func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Duration) (float64, error) {
+func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Duration, nm *netem) (float64, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -77,7 +36,7 @@ func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Dura
 	// the rest of the nodes)
 	bootstrapConfig := testConfig
 	bootstrapConfig.ID = dht.ParseUint64(0)
-	bHost := <-newIP
+	bHost := <-nm.newIP
 	bootstrapConfig.Host = bHost
 	bootstrap, err := dht.NewNode(bootstrapConfig)
 	if err != nil {
@@ -98,9 +57,9 @@ func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Dura
 	A := make([]*churnNode, avgNodesOnline)
 	B := make([]*churnNode, avgNodesOnline)
 	for i := range avgNodesOnline {
-		A[i] = newChurnNode(testConfig.WithID(nodeKeys[i]).WithHost(<-newIP),
+		A[i] = newChurnNode(testConfig.WithID(nodeKeys[i]).WithHost(<-nm.newIP),
 			bootstrap.Contact(), durChan)
-		B[i] = newChurnNode(testConfig.WithID(nodeKeys[i+avgNodesOnline]).WithHost(<-newIP),
+		B[i] = newChurnNode(testConfig.WithID(nodeKeys[i+avgNodesOnline]).WithHost(<-nm.newIP),
 			bootstrap.Contact(), durChan)
 	}
 
@@ -167,10 +126,7 @@ func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Dura
 			randomKey := keys[keyRand.Intn(len(keys))]
 			ps, err := bootstrap.FindPeers(randomKey)
 			if err == nil && ps[0] == peers[0] {
-				fmt.Println("success")
 				successes.Add(1)
-			} else {
-				fmt.Println("fail")
 			}
 			total.Add(1)
 
@@ -200,15 +156,15 @@ func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Dura
 	if err := bootstrap.Stop(); err != nil {
 		return 0, err
 	}
-	returnIP <- bHost
+	nm.returnIP <- bHost
 
 	for _, cn := range A {
 		cn.mustStop()
-		returnIP <- cn.config.Host
+		nm.returnIP <- cn.config.Host
 	}
 	for _, cn := range B {
 		cn.mustStop()
-		returnIP <- cn.config.Host
+		nm.returnIP <- cn.config.Host
 	}
 
 	fmt.Print(clearLine, "done")
@@ -216,7 +172,7 @@ func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Dura
 	return float64(successes.Load()) / float64(total.Load()) * 100, nil
 }
 
-func testKVariance(ks []int, alpha int, meanSessionTimes []int, avgNodesOnline int, simLength time.Duration) error {
+func testKVariance(ks []int, alpha int, meanSessionTimes []int, avgNodesOnline int, simLength time.Duration, nm *netem) error {
 	// k --> { mean uptime --> success rate }
 	result := make(map[int]map[int]float64)
 	for _, k := range ks {
@@ -225,7 +181,7 @@ func testKVariance(ks []int, alpha int, meanSessionTimes []int, avgNodesOnline i
 		for _, mst := range meanSessionTimes {
 			uptime := time.Duration(mst) * time.Second
 
-			rate, err := simulateChurn(k, alpha, avgNodesOnline, uptime, simLength)
+			rate, err := simulateChurn(k, alpha, avgNodesOnline, uptime, simLength, nm)
 			if err != nil {
 				fmt.Printf("%sk = %d, mst = %d, failed: %s\n", clearLine, k, mst, err)
 			} else {
@@ -244,7 +200,7 @@ func testKVariance(ks []int, alpha int, meanSessionTimes []int, avgNodesOnline i
 	return enc.Encode(result)
 }
 
-func testAlphaVariance(alphas []int, k int, meanSessionTimes []int, avgNodesOnline int, simLength time.Duration) error {
+func testAlphaVariance(alphas []int, k int, meanSessionTimes []int, avgNodesOnline int, simLength time.Duration, nm *netem) error {
 	// alpha --> { mean uptime --> success rate }
 	result := make(map[int]map[int]float64)
 	for _, alpha := range alphas {
@@ -253,7 +209,7 @@ func testAlphaVariance(alphas []int, k int, meanSessionTimes []int, avgNodesOnli
 		for _, mst := range meanSessionTimes {
 			uptime := time.Duration(mst) * time.Second
 
-			rate, err := simulateChurn(k, alpha, avgNodesOnline, uptime, simLength)
+			rate, err := simulateChurn(k, alpha, avgNodesOnline, uptime, simLength, nm)
 			if err != nil {
 				fmt.Printf("%salpha = %d, mst = %d, failed: %s\n", clearLine, alpha, mst, err)
 			} else {
@@ -411,30 +367,4 @@ func exponentialDuration(ctx context.Context, meanDuration time.Duration) <-chan
 	}()
 
 	return durChan
-}
-
-// CIDR generation
-
-func cidrRange(cidr string) ([]string, error) {
-	ip, ipNet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return nil, err
-	}
-
-	ips := make([]string, 0)
-	for ip := ip.Mask(ipNet.Mask); ipNet.Contains(ip); incIP(ip) {
-		ips = append(ips, ip.String())
-	}
-
-	// Remove network address (the first one) and broadcast address (the last one)
-	return ips[1 : len(ips)-1], nil
-}
-
-func incIP(ip net.IP) {
-	for j := len(ip) - 1; j >= 0; j-- {
-		ip[j]++
-		if ip[j] > 0 {
-			break
-		}
-	}
 }

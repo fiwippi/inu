@@ -29,8 +29,7 @@ func init() {
 
 func main() {
 	profiling := flag.Bool("profiling", false, "")
-	testKVar := flag.Bool("k-var", false, "")
-	testAlphaVar := flag.Bool("alpha-var", false, "")
+	churn := flag.Bool("churn", false, "")
 	flag.Parse()
 
 	if *profiling {
@@ -39,6 +38,24 @@ func main() {
 		}()
 	}
 
+	if *churn {
+		evaluateChurn()
+	}
+}
+
+func evaluateChurn() {
+	// Emulate churn network conditions
+	nm := newNetem("inu-churn-net", "10.41.0.0/16", tcConfig{
+		latency: 30 * time.Millisecond,
+		jitter:  5 * time.Millisecond,
+		rate:    1e9, // Gigabit
+		loss:    1,   // 1%
+	})
+	if err := nm.start(); err != nil {
+		panic(err)
+	}
+	defer nm.stop()
+
 	// Churn parameters
 	avgNodesOnline := 5000
 	simLength := 2 * time.Hour
@@ -46,28 +63,24 @@ func main() {
 
 	wg := sync.WaitGroup{}
 
-	if *testKVar {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-			err := testKVariance([]int{1, 5, 10, 15, 20}, 1, meanSessionTimes, avgNodesOnline, simLength)
-			if err != nil {
-				panic(err)
-			}
-		}()
-	}
-	if *testAlphaVar {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		err := testKVariance([]int{1, 5, 10, 15, 20}, 1, meanSessionTimes, avgNodesOnline, simLength, nm)
+		if err != nil {
+			panic(err)
+		}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-			err := testAlphaVariance([]int{1, 2, 3, 4, 5}, 20, meanSessionTimes, avgNodesOnline, simLength)
-			if err != nil {
-				panic(err)
-			}
-		}()
-	}
+		err := testAlphaVariance([]int{1, 2, 3, 4, 5}, 20, meanSessionTimes, avgNodesOnline, simLength, nm)
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	wg.Wait()
 }

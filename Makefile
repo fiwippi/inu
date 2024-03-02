@@ -7,7 +7,6 @@ build:
 clean:
 	rm -rf bin
 	go clean -testcache
-	sudo ip -4 route del local 10.41.0.0/16 dev lo
 
 .PHONY: test
 test:
@@ -19,5 +18,4 @@ image:
 
 .PHONY: evaluate
 evaluate: build
-	sudo ip -4 route replace local 10.41.0.0/16 dev lo
-	./bin/evaluate -k-var=true -alpha-var=true
+	sudo ./bin/evaluate -churn=true
