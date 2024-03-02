@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,6 +15,49 @@ import (
 
 	"inu/dht"
 )
+
+const clearLine = "\033[2K\r"
+
+var (
+	newIP    = make(chan string)
+	returnIP = make(chan string)
+)
+
+func init() {
+	r, err := cidrRange("10.41.0.0/16")
+	if err != nil {
+		panic(err)
+	}
+	ipLock := sync.Mutex{}
+
+	go func() {
+		for {
+			// This does not protect against cases where
+			// we have no more IPs to allocate!
+			ipLock.Lock()
+			ip := r[0]
+			r = r[1:]
+			ipLock.Unlock()
+
+			select {
+			case newIP <- ip:
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case ip := <-returnIP:
+				ipLock.Lock()
+				r = append(r, ip)
+				ipLock.Unlock()
+			}
+		}
+	}()
+}
+
+// Churn simulation
 
 func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Duration) (float64, error) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -26,14 +69,16 @@ func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Dura
 	testConfig := dht.DefaultNodeConfig()
 	testConfig.K = k
 	testConfig.Alpha = alpha
-
-	// Generate enough free ports for all nodes
-	ports := freePorts(2*avgNodesOnline + 1)
+	testConfig.Host = "10.41.0.0"
 
 	// Create initial bootstrap node (always online)
+	// and start it, so it initialises its own contact
+	// details (we need to know the port to create
+	// the rest of the nodes)
 	bootstrapConfig := testConfig
 	bootstrapConfig.ID = dht.ParseUint64(0)
-	bootstrapConfig.Port = ports[0]
+	bHost := <-newIP
+	bootstrapConfig.Host = bHost
 	bootstrap, err := dht.NewNode(bootstrapConfig)
 	if err != nil {
 		return 0, err
@@ -52,61 +97,59 @@ func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Dura
 	durChan := exponentialDuration(ctx, meanUptime) // Node uptime/downtime specified by exponential distribution
 	A := make([]*churnNode, avgNodesOnline)
 	B := make([]*churnNode, avgNodesOnline)
-
 	for i := range avgNodesOnline {
-		aConf := testConfig.WithID(nodeKeys[i]).WithPort(ports[i+1])
-		A[i] = newChurnNode(aConf, bootstrap.Contact(), durChan)
-		bConf := testConfig.WithID(nodeKeys[i+avgNodesOnline]).WithPort(ports[i+1+avgNodesOnline])
-		B[i] = newChurnNode(bConf, bootstrap.Contact(), durChan)
+		A[i] = newChurnNode(testConfig.WithID(nodeKeys[i]).WithHost(<-newIP),
+			bootstrap.Contact(), durChan)
+		B[i] = newChurnNode(testConfig.WithID(nodeKeys[i+avgNodesOnline]).WithHost(<-newIP),
+			bootstrap.Contact(), durChan)
 	}
 
 	// -- Simulation
 
-	// Run the bootstrap node
-	fmt.Printf("\rbootstrapping")
+	// Start the boostrap node
+	fmt.Printf("%sbootstrapping", clearLine)
 	if err := bootstrap.Start(); err != nil {
 		return 0, err
 	}
-	defer bootstrap.Stop()
 
 	// Boostrap all the initial online nodes to the network
 	for i, cn := range A {
-		cn.start()
-		fmt.Printf("\rbootstrapping %d/%d", i+1, len(A))
+		cn.mustStart(ctx)
+		fmt.Printf("%sbootstrapping %d/%d", clearLine, i+1, len(A))
 		time.Sleep(150 * time.Millisecond)
 	}
 
-	// Store 1000 keys on the DHT,
-	// keys are stored on the online nodes
-	// which are selected randomly
+	// Store keys on the DHT, keys are stored
+	// on the online nodes which are selected
+	// randomly
 	peers := []dht.Peer{{
 		Port:      60,
 		ASN:       60,
 		Published: time.Now().UTC(),
 	}}
-	keys := make([]dht.Key, 1000)
+	keys := make([]dht.Key, avgNodesOnline)
 	for i := range keys {
 		keys[i] = randKey(keyRand)
 		cn := A[keyRand.Intn(len(A))]
 		if err := cn.node.Store(keys[i], peers); err != nil {
 			return 0, err
 		}
-		fmt.Printf("\rstoring keys %d/%d", i+1, len(keys))
+		fmt.Printf("%sstoring keys %d/%d", clearLine, i+1, len(keys))
 		time.Sleep(25 * time.Millisecond)
 	}
 
 	// Wait for the DHT to stabilise, i.e.:
 	//   - Routing tables propagate
 	//   - Stored keys propagate
-	fmt.Printf("\rstabilising")
-	time.Sleep(5 * time.Second)
+	fmt.Printf("%sstabilising", clearLine)
+	time.Sleep(3 * time.Second)
 
 	// Begin churn for all nodes
 	for _, cn := range A {
-		go cn.churnOffline(ctx)
+		go cn.churnA(ctx)
 	}
 	for _, cn := range B {
-		go cn.churnOnline(ctx)
+		go cn.churnB(ctx)
 	}
 
 	// Track the rate of successful requests
@@ -124,7 +167,10 @@ func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Dura
 			randomKey := keys[keyRand.Intn(len(keys))]
 			ps, err := bootstrap.FindPeers(randomKey)
 			if err == nil && ps[0] == peers[0] {
+				fmt.Println("success")
 				successes.Add(1)
+			} else {
+				fmt.Println("fail")
 			}
 			total.Add(1)
 
@@ -142,14 +188,30 @@ func simulateChurn(k, alpha, avgNodesOnline int, meanUptime, simLength time.Dura
 			default:
 			}
 
-			fmt.Printf("\rrunning - approx %s/%s", time.Since(start).Round(time.Second), simLength)
+			fmt.Printf("%srunning - approx %s/%s", clearLine, time.Since(start).Round(time.Second), simLength)
 			time.Sleep(1 * time.Second)
 		}
 	}()
 
 	<-time.After(simLength)
+	cancel()
 
-	fmt.Printf("\r")
+	// Stop all DHT nodes and return their ports
+	if err := bootstrap.Stop(); err != nil {
+		return 0, err
+	}
+	returnIP <- bHost
+
+	for _, cn := range A {
+		cn.mustStop()
+		returnIP <- cn.config.Host
+	}
+	for _, cn := range B {
+		cn.mustStop()
+		returnIP <- cn.config.Host
+	}
+
+	fmt.Print(clearLine, "done")
 
 	return float64(successes.Load()) / float64(total.Load()) * 100, nil
 }
@@ -165,10 +227,10 @@ func testKVariance(ks []int, alpha int, meanSessionTimes []int, avgNodesOnline i
 
 			rate, err := simulateChurn(k, alpha, avgNodesOnline, uptime, simLength)
 			if err != nil {
-				fmt.Printf("k = %d, mst = %d, failed: %s\n ", k, mst, err)
+				fmt.Printf("%sk = %d, mst = %d, failed: %s\n", clearLine, k, mst, err)
 			} else {
 				result[k][mst] = rate
-				fmt.Printf("k = %d, mst = %d, rate = %.2f\n ", k, mst, rate)
+				fmt.Printf("%sk = %d, mst = %d, rate = %.2f\n", clearLine, k, mst, rate)
 			}
 		}
 	}
@@ -193,10 +255,10 @@ func testAlphaVariance(alphas []int, k int, meanSessionTimes []int, avgNodesOnli
 
 			rate, err := simulateChurn(k, alpha, avgNodesOnline, uptime, simLength)
 			if err != nil {
-				fmt.Printf("alpha = %d, mst = %d, failed: %s\n ", alpha, mst, err)
+				fmt.Printf("%salpha = %d, mst = %d, failed: %s\n", clearLine, alpha, mst, err)
 			} else {
 				result[k][mst] = rate
-				fmt.Printf("alpha = %d, mst = %d, rate = %.2f\n ", alpha, mst, rate)
+				fmt.Printf("%salpha = %d, mst = %d, rate = %.2f\n", clearLine, alpha, mst, rate)
 			}
 		}
 	}
@@ -233,56 +295,81 @@ func newChurnNode(config dht.NodeConfig, bootstrap dht.Contact, durChan <-chan t
 	}
 }
 
-func (n *churnNode) start() {
+func (n *churnNode) mustStart(ctx context.Context) {
 	var err error
 	n.node, err = dht.NewNode(n.config) // Node fully recreated to simulate loss of data
 	if err != nil {
 		panic(err)
 	}
 
-	if err := n.node.Start(); err != nil {
-		for err != nil {
-			if !strings.Contains(err.Error(), "bind: address already in use") {
-				fmt.Println("ERR start:", n.node.Contact(), err)
-				panic(err)
-			}
-			err = n.node.Start()
-			time.Sleep(1 * time.Second)
+	err = n.node.Start()
+	for err != nil {
+		select {
+		case <-ctx.Done():
+			return
+		default:
 		}
+
+		panic(err)
 	}
 
 	err = n.node.Bootstrap(n.bootstrap)
 	for err != nil {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		err = n.node.Bootstrap(n.bootstrap)
+		time.Sleep(1 * time.Second)
 	}
 }
 
-func (n *churnNode) churnOnline(ctx context.Context) {
-	select {
-	case <-ctx.Done():
-		return
-	case <-time.After(<-n.nextDuration):
-	}
-
-	n.start()
-
-	n.churnOffline(ctx)
-}
-
-func (n *churnNode) churnOffline(ctx context.Context) {
-	// Online --> Offline
-	select {
-	case <-ctx.Done():
-		n.node.Stop()
-		return
-	case <-time.After(<-n.nextDuration):
-	}
-
+func (n *churnNode) mustStop() {
 	if err := n.node.Stop(); err != nil {
 		panic(err)
 	}
+}
 
-	n.churnOnline(ctx)
+func (n *churnNode) churnA(ctx context.Context) {
+	for {
+		// Online --> Offline
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(<-n.nextDuration):
+		}
+		n.mustStop()
+
+		// Offline --> Online
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(<-n.nextDuration):
+		}
+		n.mustStart(ctx)
+	}
+}
+
+func (n *churnNode) churnB(ctx context.Context) {
+	for {
+		// Offline --> Online
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(<-n.nextDuration):
+		}
+		n.mustStart(ctx)
+
+		// Online --> Offline
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(<-n.nextDuration):
+		}
+		n.mustStop()
+	}
 }
 
 // Key generation
@@ -326,24 +413,28 @@ func exponentialDuration(ctx context.Context, meanDuration time.Duration) <-chan
 	return durChan
 }
 
-// Port detection
+// CIDR generation
 
-func freePorts(count int) []uint16 {
-	ps := make([]uint16, count)
-	for i := range count {
-		addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-		if err != nil {
-			panic(err)
-		}
-
-		l, err := net.ListenTCP("tcp", addr)
-		if err != nil {
-			panic(err)
-		}
-		defer l.Close()
-
-		ps[i] = uint16(l.Addr().(*net.TCPAddr).Port)
+func cidrRange(cidr string) ([]string, error) {
+	ip, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, err
 	}
 
-	return ps
+	ips := make([]string, 0)
+	for ip := ip.Mask(ipNet.Mask); ipNet.Contains(ip); incIP(ip) {
+		ips = append(ips, ip.String())
+	}
+
+	// Remove network address (the first one) and broadcast address (the last one)
+	return ips[1 : len(ips)-1], nil
+}
+
+func incIP(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
+	}
 }

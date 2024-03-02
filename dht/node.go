@@ -59,8 +59,8 @@ func DefaultNodeConfig() NodeConfig {
 	}
 }
 
-func (c NodeConfig) WithPort(p uint16) NodeConfig {
-	c.Port = p
+func (c NodeConfig) WithHost(h string) NodeConfig {
+	c.Host = h
 	return c
 }
 
