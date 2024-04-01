@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
-	"time"
 
 	"inu/cert"
 )
@@ -43,7 +42,7 @@ type Client struct {
 func NewClient(config ClientConfig) *Client {
 	return &Client{
 		config: config,
-		client: cert.Client(10 * time.Second),
+		client: cert.Client(),
 	}
 }
 

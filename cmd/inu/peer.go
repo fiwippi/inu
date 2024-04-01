@@ -13,10 +13,7 @@ import (
 
 	"inu"
 	"inu/cid"
-	"inu/dht"
 )
-
-const storePath = "inu.db"
 
 var peerCmd = &cobra.Command{
 	Use:   "peer",
@@ -28,11 +25,12 @@ var peerDaemonCmd = &cobra.Command{
 	Short: "Run the peer daemon process",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		c, err := parsePeerConfig(cmd)
+		c, err := parseDaemonConfig(cmd)
 		if err != nil {
 			return err
 		}
-		d := inu.NewDaemon(storePath, c)
+
+		d := inu.NewDaemon(c)
 
 		d.Start()
 		<-done()
@@ -126,48 +124,57 @@ func init() {
 	peerCmd.PersistentFlags().StringP("file", "f", "", "peer configuration file")
 }
 
-func parsePeerConfig(cmd *cobra.Command) (dht.ClientConfig, error) {
+func parseDaemonConfig(cmd *cobra.Command) (inu.DaemonConfig, error) {
 	configPath, err := cmd.Flags().GetString("file")
 	if err != nil {
-		return dht.ClientConfig{}, err
+		return inu.DaemonConfig{}, err
 	}
-	c := dht.DefaultClientConfig()
+
+	c := inu.DefaultDaemonConfig()
 	if configPath != "" {
 		data, err := os.ReadFile(configPath)
 		if err != nil {
-			return dht.ClientConfig{}, err
+			return inu.DaemonConfig{}, err
 		}
 		if err := json.Unmarshal(data, &c); err != nil {
-			return dht.ClientConfig{}, err
+			return inu.DaemonConfig{}, err
 		}
 	}
 
-	clientNodes := os.Getenv("CLIENT_NODES")
+	clientNodes := os.Getenv("INU_DAEMON_DHT_NODES")
 	if clientNodes != "" {
 		var nodes []string
 		if err := json.Unmarshal([]byte(clientNodes), &nodes); err != nil {
-			return dht.ClientConfig{}, err
+			return inu.DaemonConfig{}, err
 		}
 		c.Nodes = nodes
+	}
+	storePath := os.Getenv("INU_DAEMON_STORE_PATH")
+	if storePath != "" {
+		c.StorePath = storePath
+	}
+	publicIP := os.Getenv("INU_DAEMON_PUBLIC_IP")
+	if publicIP != "" {
+		c.PublicIP = publicIP
 	}
 
 	return c, nil
 }
 
 func runApiFunc(cmd *cobra.Command, fn func(api *inu.API) error) error {
-	c, err := parsePeerConfig(cmd)
+	c, err := parseDaemonConfig(cmd)
 	if err != nil {
 		return err
 	}
 
-	if offline, err := daemonOffline(c.Port + 1000); err == nil && offline {
-		d := inu.NewDaemon(storePath, c)
+	if offline, err := daemonOffline(c.RpcPort); err == nil && offline {
+		d := inu.NewDaemon(c)
 		d.Start()
 		defer d.Stop()
 		time.Sleep(1 * time.Second)
 	}
 
-	api, err := inu.NewAPI(c)
+	api, err := inu.NewAPIFromConfig(c)
 	if err != nil {
 		return err
 	}

@@ -64,6 +64,11 @@ func (c NodeConfig) WithHost(h string) NodeConfig {
 	return c
 }
 
+func (c NodeConfig) WithPort(p uint16) NodeConfig {
+	c.Port = p
+	return c
+}
+
 func (c NodeConfig) WithID(k Key) NodeConfig {
 	c.ID = k
 	return c
@@ -249,6 +254,8 @@ func (n *Node) Bootstrap(c Contact) error {
 		return err
 	}
 
+	slog.Info("Bootstrapped DHT node", slog.Any("bootstrap", c))
+
 	// Add these contacts back to our routing table
 	for _, c := range cs {
 		n.updateContact(c)
@@ -309,7 +316,7 @@ func (n *Node) republish() {
 
 			ps := n.peerStore.GetAll()
 			for _, p := range ps {
-				if err := n.Store(p.K, p.P); err != nil {
+				if err := n.Store(p.K, p.P, true); err != nil {
 					slog.Error("Failed to republish peers", slog.Any("key", p.K),
 						slog.Any("peers", p.P), slog.Any("err", err))
 				}
@@ -531,20 +538,28 @@ func handleKeyPut(n *Node) http.HandlerFunc {
 		n.asnMut.RUnlock()
 
 		// Generate the peer info
-		p := Peer{
+		ps := []Peer{{
 			IP:        ip,
 			Port:      port,
 			ASN:       asn,
 			Published: time.Now().UTC(),
-		}
+		}}
 
-		if err := n.Store(k, []Peer{p}); err != nil {
-			slog.Error("Could not store pair", slog.Any("err", err))
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
+		// Store the peer locally and return, we
+		// then store the peer on the network but
+		// in a goroutine so that this handler
+		// does not hang.
+		//
+		// Note: we return ASAP
+		n.peerStore.Put(k, ps)
 		w.WriteHeader(http.StatusOK)
+
+		go func() {
+			if err := n.Store(k, ps, true); err != nil {
+				slog.Error("Could not store pair on network", slog.Any("err", err))
+				return
+			}
+		}()
 	}
 }
 
@@ -842,9 +857,11 @@ func (n *Node) lookup(k Key, lk lookupKind) (findPeersResp, error) {
 	}
 }
 
-func (n *Node) Store(k Key, p []Peer) error {
-	// Store the pair in our own store
-	n.peerStore.Put(k, p)
+func (n *Node) Store(k Key, p []Peer, networkOnly bool) error {
+	if !networkOnly {
+		// Store the pair in our own store
+		n.peerStore.Put(k, p)
+	}
 
 	// Find nodes to store the value in
 	cs, err := n.FindNode(k)
@@ -903,7 +920,7 @@ type shortlist struct {
 
 	k         int
 	target    Key
-	list      []Contact
+	list      []Contact // Ordered by distance (ascending)
 	contacted map[Key]struct{}
 	hasPeers  map[Key]struct{}
 }

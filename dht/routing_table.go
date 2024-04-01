@@ -132,7 +132,7 @@ func (b *bucket) Split(self Key) (bucket, bucket) {
 		// are guaranteed to have space in the
 		// bucket
 		kCmp := k.Cmp(mid)
-		if kCmp == -1 || kCmp == 0 {
+		if kCmp == -1 || kCmp == 0 { // x < y || x == y
 			x.UpdateContact(c, self, nil)
 		} else {
 			y.UpdateContact(c, self, nil)

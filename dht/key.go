@@ -14,6 +14,10 @@ const keyLen = 32 // 32 * 8 = 256
 
 type Key [keyLen]byte
 
+func (k Key) String() string {
+	return k.MarshalB32()
+}
+
 func ParseCID(cid cid.CID) (Key, error) {
 	k := Key{}
 	return k, k.UnmarshalB32(string(cid))
@@ -28,10 +32,6 @@ func ParseUint64(n uint64) Key {
 	k := Key{}
 	copy(k[keyLen-len(buf):], buf[:])
 	return k
-}
-
-func (k Key) String() string {
-	return k.MarshalB32()
 }
 
 func fromBigInt(n *big.Int) Key {

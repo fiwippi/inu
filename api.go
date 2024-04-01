@@ -3,11 +3,12 @@ package inu
 import (
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/rpc"
+	"time"
 
 	"inu/cert"
 	"inu/cid"
-	"inu/dht"
 	"inu/fs"
 )
 
@@ -16,16 +17,27 @@ type API struct {
 	client *rpc.Client
 }
 
-func NewAPI(c dht.ClientConfig) (*API, error) {
-	conn, err := tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", c.Port+1000), cert.Config())
+func NewAPI(host string, port uint16) (*API, error) {
+	d := tls.Dialer{
+		NetDialer: &net.Dialer{
+			Timeout:   10 * time.Minute,
+			KeepAlive: 10 * time.Minute,
+		},
+		Config: cert.Config(),
+	}
+	conn, err := d.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		return nil, err
 	}
 
 	return &API{
-		port:   c.Port + 1000,
+		port:   port,
 		client: rpc.NewClient(conn),
 	}, nil
+}
+
+func NewAPIFromConfig(config DaemonConfig) (*API, error) {
+	return NewAPI(config.Host, config.RpcPort)
 }
 
 func (api *API) Close() error {
@@ -35,8 +47,14 @@ func (api *API) Close() error {
 	return nil
 }
 
+func (api *API) AddBytes(bytes []byte) (cid.CID, error) {
+	r := new(AddBytesReply)
+	err := api.client.Call("Daemon.AddBytes", bytes, &r)
+	return r.CID, err
+}
+
 func (api *API) AddPath(path string) ([]fs.Record, error) {
-	r := new(AddReply)
+	r := new(AddPathReply)
 	err := api.client.Call("Daemon.AddPath", path, &r)
 	return r.Records, err
 }

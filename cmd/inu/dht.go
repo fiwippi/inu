@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -28,7 +27,9 @@ var dhtStartCmd = &cobra.Command{
 			return err
 		}
 
-		n.Start()
+		if err := n.Start(); err != nil {
+			panic(err)
+		}
 		<-done()
 		return n.Stop()
 	},
@@ -39,18 +40,14 @@ var dhtJoinCmd = &cobra.Command{
 	Short: "Run a DHT node in a pre-existing network",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sleep, err := cmd.Flags().GetDuration("sleep")
-		if err != nil {
-			return err
-		}
-		time.Sleep(sleep)
-
 		n, err := parseNode(cmd)
 		if err != nil {
 			return err
 		}
 
-		n.Start()
+		if err := n.Start(); err != nil {
+			panic(err)
+		}
 		k := dht.Key{}
 		if err := k.UnmarshalB32(args[0]); err != nil {
 			return err
@@ -70,8 +67,6 @@ func init() {
 
 	dhtCmd.PersistentFlags().StringP("file", "f", "", "node configuration file")
 	dhtCmd.PersistentFlags().StringP("asn", "a", "", "asn mapping file")
-
-	dhtJoinCmd.Flags().Duration("sleep", 0, "sleep before running command")
 }
 
 func parseNode(cmd *cobra.Command) (*dht.Node, error) {
@@ -97,7 +92,7 @@ func parseNode(cmd *cobra.Command) (*dht.Node, error) {
 	}
 
 	// Override the config file with ENV vars if applicable
-	nodeID := os.Getenv("NODE_ID")
+	nodeID := os.Getenv("INU_NODE_ID")
 	if nodeID != "" {
 		k := dht.Key{}
 		if err := k.UnmarshalB32(nodeID); err != nil {
@@ -105,7 +100,7 @@ func parseNode(cmd *cobra.Command) (*dht.Node, error) {
 		}
 		c.ID = k
 	}
-	altHost := os.Getenv("NODE_ALT_HOST")
+	altHost := os.Getenv("INU_NODE_ALT_HOST")
 	if altHost != "" {
 		c.AltHost = altHost
 	}
@@ -118,9 +113,15 @@ func parseNode(cmd *cobra.Command) (*dht.Node, error) {
 
 	// Add IP to ASN mappings if specified
 	if asnPath != "" {
-		f, err := os.Open(asnPath)
-		if err != nil {
-			return nil, err
+		f := new(os.File)
+		if asnPath == "-" {
+			f = os.Stdin
+		} else {
+			tmp, err := os.Open(asnPath)
+			if err != nil {
+				return nil, err
+			}
+			f = tmp
 		}
 
 		r := csv.NewReader(f)

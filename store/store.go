@@ -16,8 +16,9 @@ type Store struct {
 func NewStore(path string) *Store {
 	// Initialise the store
 	s := &Store{
-		pool: sqlx.MustConnect("sqlite", path+"?_pragma=foreign_keys(on)"),
+		pool: sqlx.MustConnect("sqlite", path),
 	}
+	s.pool.SetMaxOpenConns(1)
 
 	// Create the tables
 	s.pool.MustExec(

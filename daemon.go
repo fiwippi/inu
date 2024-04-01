@@ -11,10 +11,10 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/sync/errgroup"
 
 	"inu/cert"
 	"inu/cid"
@@ -24,7 +24,29 @@ import (
 	"inu/store"
 )
 
-// daemon
+// Daemon Config
+
+type DaemonConfig struct {
+	dht.ClientConfig
+
+	StorePath string
+	Host      string
+	PublicIP  string // The daemon is not necessarily hosted on the same IP that it's accessible at
+	RpcPort   uint16
+}
+
+func DefaultDaemonConfig() DaemonConfig {
+	def := dht.DefaultClientConfig()
+
+	return DaemonConfig{
+		ClientConfig: dht.DefaultClientConfig(),
+		StorePath:    "inu.db",
+		Host:         "0.0.0.0",
+		RpcPort:      def.Port + 1000,
+	}
+}
+
+// Daemon
 
 type Daemon struct {
 	// HTTP/RPC state
@@ -37,26 +59,31 @@ type Daemon struct {
 	store *store.Store
 	dht   *dht.Client
 	http  *http.Client
+	sem   chan struct{} // Semaphores for controlling download concurrency
 
 	// Config
-	config dht.ClientConfig
+	config DaemonConfig
 }
 
-func NewDaemon(storePath string, c dht.ClientConfig) *Daemon {
-	// Create the daemon
-	s := store.NewStore(storePath)
+func NewDaemon(config DaemonConfig) *Daemon {
+	if config.PublicIP == "" {
+		panic("must set public IP, even it it's equivalent to the host")
+	}
+
+	s := store.NewStore(config.StorePath)
 	d := &Daemon{
 		privateH: rpc.NewServer(),
 		store:    s,
 		fs:       fs.FromStore(s),
-		config:   c,
-		dht:      dht.NewClient(c),
-		http:     cert.Client(10 * time.Second),
+		config:   config,
+		dht:      dht.NewClient(config.ClientConfig),
+		http:     cert.Client(),
+		sem:      make(chan struct{}, 5000), // Max concurrent downloads of 5000 blocks
 	}
 
 	// Register the HTTP handler
 	d.public = &http.Server{
-		Addr:      fmt.Sprintf("0.0.0.0:%d", c.Port),
+		Addr:      fmt.Sprintf("%s:%d", config.Host, config.Port),
 		Handler:   d.router(),
 		TLSConfig: cert.Config(),
 	}
@@ -70,29 +97,38 @@ func NewDaemon(storePath string, c dht.ClientConfig) *Daemon {
 }
 
 func (d *Daemon) Start() {
+	privateAddr := fmt.Sprintf("%s:%d", d.config.Host, d.config.RpcPort)
+
 	slog.Info("Starting peer daemon",
 		slog.String("public", d.public.Addr),
-		slog.String("private", d.privateAddress()))
+		slog.String("private", privateAddr))
+
+	publicL, err := net.Listen("tcp", d.public.Addr)
+	if err != nil {
+		slog.Error("Public listen failed", slog.Any("err", err))
+		os.Exit(1)
+	}
 
 	go func() {
-		if err := d.public.ListenAndServeTLS("", ""); err != nil {
-			if err != http.ErrServerClosed {
+		if err := d.public.ServeTLS(publicL, "", ""); err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
 				slog.Error("Public execution failed", slog.Any("err", err))
 				os.Exit(1)
 			}
 		}
 	}()
 
+	privateL, err := tls.Listen("tcp", privateAddr, cert.Config())
+	if err != nil {
+		slog.Error("RPC listen failed", slog.Any("err", err))
+		os.Exit(1)
+	}
+
 	go func() {
-		listener, err := tls.Listen("tcp", d.privateAddress(), cert.Config())
-		if err != nil {
-			slog.Error("RPC listen failed", slog.Any("err", err))
-			os.Exit(1)
-		}
-		d.privateL = listener
+		d.privateL = privateL
 
 		for {
-			conn, err := listener.Accept()
+			conn, err := d.privateL.Accept()
 			if err != nil {
 				if !errors.Is(err, net.ErrClosed) {
 					slog.Error("Failed to accept incoming RPC", slog.Any("err", err))
@@ -110,12 +146,15 @@ func (d *Daemon) Start() {
 }
 
 func (d *Daemon) Stop() error {
-	defer slog.Info("Peer daemon stopped")
-
+	if err := d.store.Close(); err != nil {
+		return err
+	}
 	ctx := context.Background()
 	if err := d.public.Shutdown(ctx); err != nil {
 		return err
 	}
+
+	defer slog.Info("Peer daemon stopped")
 	return d.privateL.Close()
 }
 
@@ -147,11 +186,25 @@ func (d *Daemon) router() *chi.Mux {
 
 // RPC (private)
 
-type AddReply struct {
+type AddBytesReply struct {
+	CID cid.CID
+}
+
+func (d *Daemon) AddBytes(bytes []byte, reply *AddBytesReply) error {
+	n, err := d.fs.AddBytes(bytes)
+	if err != nil {
+		return err
+	}
+
+	reply.CID = n.Block().CID
+	return nil
+}
+
+type AddPathReply struct {
 	Records []fs.Record
 }
 
-func (d *Daemon) AddPath(path string, reply *AddReply) error {
+func (d *Daemon) AddPath(path string, reply *AddPathReply) error {
 	_, rs, err := d.fs.AddPath(path)
 	if err != nil {
 		return err
@@ -186,7 +239,7 @@ func (d *Daemon) Upload(path string, count *uint) error {
 		return err
 	}
 
-	cids, err := d.dag(n.Block().CID)
+	cids, _, err := d.fs.DAG(n.Block().CID)
 	if err != nil {
 		return err
 	}
@@ -205,22 +258,40 @@ func (d *Daemon) Upload(path string, count *uint) error {
 	return nil
 }
 
-func (d *Daemon) Download(cid cid.CID, reply *struct{}) error {
+func (d *Daemon) Download(cid cid.CID, _ *struct{}) error {
 	k, err := dht.ParseCID(cid)
 	if err != nil {
 		return err
 	}
-	return d.download(k)
+
+	eg, _ := errgroup.WithContext(context.Background())
+	eg.Go(func() error {
+		return d.download(eg, k)
+	})
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+	return eg.Wait()
 }
 
-func (d *Daemon) download(k dht.Key) error {
+func (d *Daemon) download(eg *errgroup.Group, k dht.Key) error {
+	// Semaphores ensure a max limit on concurrent downloads
+	d.sem <- struct{}{}
+	defer func() {
+		<-d.sem
+	}()
+
 	// To download a Merkle DAG
 	//   1. Get peers for key
-	//   2. Download block represented by key from peer
+	//   2. Download block represented by key from a peer
+	//      which is not ourselves
 	//   3. Ensure valid block is returned
 	//   4. Parse block as Merkle node
 	//   5. Add the block to the store
-	//   6. Download blocks denoted in Merkle links
+	//      (Important we do this before we announce we
+	//      own the block!)
+	//   6. Notify the DHT that we own the block
+	//   7. Begin downloading blocks denoted in Merkle links
 
 	// 1
 	peers, err := d.dht.FindPeers(k)
@@ -229,7 +300,15 @@ func (d *Daemon) download(k dht.Key) error {
 	}
 
 	// 2
+	i := index(peers, d.config.PublicIP)
+	if i != -1 {
+		peers = append(peers[:i], peers[i+1:]...)
+	}
+	if len(peers) == 0 {
+		return fmt.Errorf("no peers have the key")
+	}
 	p := peers[0]
+
 	resp, err := d.http.Get(fmt.Sprintf("https://%s:%d/block/%s", p.IP, p.Port, k.MarshalB32()))
 	if err != nil {
 		return err
@@ -259,15 +338,20 @@ func (d *Daemon) download(k dht.Key) error {
 	}
 
 	// 6
-	for _, l := range m.Links() {
-		kk, err := dht.ParseCID(l.CID)
-		if err != nil {
-			return err
-		}
+	if err := d.dht.PutKey(k); err != nil {
+		return err
+	}
 
-		if err := d.download(kk); err != nil {
-			return err
-		}
+	// 7
+	for _, l := range m.Links() {
+		eg.Go(func() error {
+			kk, err := dht.ParseCID(l.CID)
+			if err != nil {
+				return err
+			}
+
+			return d.download(eg, kk)
+		})
 	}
 
 	return nil
@@ -275,32 +359,15 @@ func (d *Daemon) download(k dht.Key) error {
 
 // Helpers
 
-func (d *Daemon) dag(id cid.CID) ([]cid.CID, error) {
-	b, err := d.store.Get(id)
-	if err != nil {
-		return nil, err
-	}
-	m, err := merkle.ParseBlock(b)
-	if err != nil {
-		return nil, err
-	}
-
-	cids := []cid.CID{id}
-	for _, l := range m.Links() {
-		cs, err := d.dag(l.CID)
-		if err != nil {
-			return nil, err
-		}
-		cids = append(cids, cs...)
-	}
-
-	return cids, nil
-}
-
-func (d *Daemon) privateAddress() string {
-	return fmt.Sprintf("127.0.0.1:%d", d.config.Port+1000)
-}
-
 func badCodeError(c int) error {
 	return fmt.Errorf("bad response code: %d", c)
+}
+
+func index(ps []dht.Peer, p string) int {
+	for i := range ps {
+		if p == ps[i].IP.String() {
+			return i
+		}
+	}
+	return -1
 }

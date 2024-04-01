@@ -40,7 +40,7 @@ func TestDeduplication(t *testing.T) {
 		// Create node
 		n, err := fs.AddBytes(cat)
 		require.NoError(t, err)
-		require.Len(t, n.Links(), 2)
+		require.Len(t, n.Links(), 5)
 
 		// Get node
 		b, err := fs.store.Get(n.Block().CID)
@@ -54,15 +54,10 @@ func TestDeduplication(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, cat, v)
 
-		// Our store should have 11 nodes,
-		// 5 leaves
-		// 6 internal nodes
-		//
-		// If the DAG did not deduplicate
-		// we would be storing 12 nodes
+		// Our store should have 6 nodes,
 		size, err := fs.store.Size()
 		require.NoError(t, err)
-		require.Equal(t, uint(11), size)
+		require.Equal(t, uint(6), size)
 	})
 }
 
@@ -72,7 +67,7 @@ func TestResolution(t *testing.T) {
 	n, rs, err := fs.AddPath("../test")
 	require.NoError(t, err)
 	require.Len(t, rs, 2)
-	require.Equal(t, cid.CID(`LJTOZCE2G3ES4JNBUU5IBHKI6U5WF6YCPCQ6KAOYKH5UYKLKX2DQ`), n.Block().CID)
+	require.Equal(t, cid.CID(`5Q7YC5E2QPBRRSZAERGNYUXHASWHO7QRNOPRXDNPNOTZYUK6IKWQ`), n.Block().CID)
 
 	// Resolve to the root node for redcat.jpg
 	m, err := fs.ResolvePath(string(n.Block().CID) + "/redcat.jpg")

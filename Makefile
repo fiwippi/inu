@@ -1,7 +1,6 @@
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -o ./bin/inu cmd/inu/*
-	CGO_ENABLED=0 go build -o ./bin/evaluate cmd/evaluate/*
+	CGO_ENABLED=0 go build -o ./bin/inu cmd/inu/*.go
 
 .PHONY: clean
 clean:
@@ -11,11 +10,3 @@ clean:
 .PHONY: test
 test:
 	go test ./... -race -p 1
-
-.PHONY: image
-image:
-	docker image build . -t inu:latest
-
-.PHONY: evaluate
-evaluate: build
-	sudo ./bin/evaluate -churn=true

@@ -609,6 +609,66 @@ func TestNode_PutKey(t *testing.T) {
 	})
 }
 
+func TestIntegrationNode_StoreTwenty(t *testing.T) {
+	// Create a network of k nodes
+	config := DefaultNodeConfig()
+	config.K = 20
+	nodes := make([]*Node, config.K)
+	for i := range nodes {
+		nodes[i] = newTestNodeCustom(uint64(i), fmt.Sprintf("%d", 3000+i), config)
+		require.NoError(t, nodes[i].Start())
+		defer nodes[i].Stop()
+
+		if i != 0 {
+			require.NoError(t, nodes[i].Bootstrap(nodes[0].Contact()))
+		}
+	}
+
+	t.Run("all nodes aware of each other", func(t *testing.T) {
+		for _, n := range nodes {
+			n.rt.Lock()
+		}
+		for _, n := range nodes {
+			for _, m := range nodes {
+				if n.self.ID == m.self.ID {
+					continue
+				}
+
+				require.Contains(t, n.rt.buckets[0].elements, m.self.ID)
+			}
+		}
+		for _, n := range nodes {
+			n.rt.Unlock()
+		}
+	})
+
+	t.Run("store propagates to all nodes", func(t *testing.T) {
+		k := ParseUint64(21)
+		port := uint16(60)
+		data, err := json.Marshal(port)
+		require.NoError(t, err)
+
+		url := "https://" + nodes[0].self.Address + "/key/" + k.MarshalB32()
+		req, err := http.NewRequest("PUT", url, bytes.NewReader(data))
+		require.NoError(t, err)
+
+		client := cert.Client()
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+
+		// Wait for value to propagate
+		time.Sleep(1 * time.Second)
+
+		for _, n := range nodes {
+			v, err := n.peerStore.Get(k)
+			require.NoError(t, err)
+			require.Len(t, v, 1)
+			require.Equal(t, port, v[0].Port)
+		}
+	})
+}
+
 func TestIntegrationNode_BetweenDhtNodes(t *testing.T) {
 	// Initial node A, ID = 1
 	aConf := DefaultNodeConfig()
@@ -658,9 +718,9 @@ func TestIntegrationNode_BetweenDhtNodes(t *testing.T) {
 	// Store P1 on A
 	// Store P2 on B
 	// Store P3 on C
-	require.NoError(t, A.Store(p1.K, p1.P))
-	require.NoError(t, B.Store(p2.K, p2.P))
-	require.NoError(t, C.Store(p3.K, p3.P))
+	require.NoError(t, A.Store(p1.K, p1.P, false))
+	require.NoError(t, B.Store(p2.K, p2.P, false))
+	require.NoError(t, C.Store(p3.K, p3.P, false))
 
 	// Each pair is accessible from all nodes in the swarm
 	for _, p := range []pair{p1, p2, p3} {
@@ -785,7 +845,7 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 	// move around the network on request
 
 	uploadKey := ParseUint64(56)
-	client := cert.Client(10 * time.Second)
+	client := cert.Client()
 	localhost := netip.MustParseAddr("127.0.0.1")
 
 	// Initial node A, ID = 1
@@ -832,6 +892,7 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 		resp, err := client.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.StatusCode)
+		time.Sleep(1 * time.Second) // Wait for system to propagate the key
 
 		// Verify peer exists on A and B
 		peersA, err := A.peerStore.Get(k)
@@ -938,6 +999,7 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 		resp, err := client.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.StatusCode)
+		time.Sleep(1 * time.Second) // Wait for system to propagate the key
 
 		// Verify peer exists on A B C D
 		peersA, err := A.peerStore.Get(k)
@@ -950,12 +1012,12 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 
 		require.Equal(t, localhost, peersA[0].IP)
 		require.Equal(t, uint16(60), peersA[0].Port)
-		require.WithinDuration(t, time.Now(), peersA[0].Published, 3*time.Second)
+		require.WithinDuration(t, time.Now(), peersA[0].Published, 5*time.Second)
 		require.Equal(t, 1, peersA[0].ASN)
 
 		require.Equal(t, localhost, peersA[1].IP)
 		require.Equal(t, uint16(61), peersA[1].Port)
-		require.WithinDuration(t, time.Now(), peersA[1].Published, 3*time.Second)
+		require.WithinDuration(t, time.Now(), peersA[1].Published, 5*time.Second)
 		require.Equal(t, 2, peersA[1].ASN) // The ASN for localhost on D is 2, and we uploaded to D
 
 		// B and C should have the full peer list
@@ -976,7 +1038,7 @@ func TestIntegrationNode_AuthedUpload(t *testing.T) {
 		require.Len(t, peersD, 1)
 		require.Equal(t, localhost, peersD[0].IP)
 		require.Equal(t, uint16(61), peersD[0].Port)
-		require.WithinDuration(t, time.Now(), peersD[0].Published, 3*time.Second)
+		require.WithinDuration(t, time.Now(), peersD[0].Published, 5*time.Second)
 		require.Equal(t, 2, peersD[0].ASN) // The ASN for localhost on D is 2, and we uploaded to D
 	})
 }
@@ -1084,7 +1146,7 @@ func TestLookup_Store(t *testing.T) {
 
 	// Should make 4 find requests in addition
 	// to 4 store RPCs
-	require.NoError(t, src.Store(k, p))
+	require.NoError(t, src.Store(k, p, false))
 	require.Len(t, found, 4)
 	require.Equal(t, 1, found[A.self.ID])
 	require.Equal(t, 1, found[B.self.ID])
@@ -1605,7 +1667,7 @@ func TestIntegrationLookup_Store(t *testing.T) {
 	// routing table)
 	k := ParseUint64(1)
 	ps := newTestPeer(1)
-	require.NoError(t, src.Store(k, ps))
+	require.NoError(t, src.Store(k, ps, false))
 
 	v, err := A.peerStore.Get(k)
 	require.NoError(t, err)

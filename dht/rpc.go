@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"inu/cert"
 )
@@ -45,7 +44,7 @@ func newRpc(c Contact, swarmKey Key) rpc {
 	}
 
 	return &rpcClient{
-		client:      cert.Client(20 * time.Second),
+		client:      cert.Client(),
 		srcHeader:   string(h),
 		swarmHeader: swarmKey.MarshalB32(),
 	}

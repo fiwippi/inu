@@ -7,20 +7,23 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"inu/cid"
 	"inu/dht"
 	"inu/fs"
 	"inu/store"
 )
 
-func TestAPI_AddPath_Cat(t *testing.T) {
-	config := dht.DefaultClientConfig()
+func TestAPI_Add_Cat(t *testing.T) {
+	config := DefaultDaemonConfig()
+	config.StorePath = store.InMemory
+	config.PublicIP = "dummy"
 
-	d := NewDaemon(store.InMemory, config)
+	d := NewDaemon(config)
 	d.Start()
 	defer d.Stop()
 	time.Sleep(1 * time.Second)
 
-	api, err := NewAPI(config)
+	api, err := NewAPIFromConfig(config)
 	require.NoError(t, err)
 
 	t.Run("add path", func(t *testing.T) {
@@ -33,12 +36,27 @@ func TestAPI_AddPath_Cat(t *testing.T) {
 		}, rs[0])
 	})
 
-	t.Run("cat", func(t *testing.T) {
-		fileData, err := os.ReadFile("test/redcat.jpg")
+	bytesToAdd := []byte{byte('a')}
+	t.Run("add bytes", func(t *testing.T) {
+		id, err := api.AddBytes(bytesToAdd)
 		require.NoError(t, err)
-		catData, err := api.Cat("JQXCTSC5JZCGXBGYVRXTZPBWLP6JCYZTBIDSCYEGZJCUKHTYOINA")
-		require.NoError(t, err)
-		require.Equal(t, fileData, catData)
+		require.Equal(t, cid.CID("AHBHO3TJNH4OGKMXABIXZVDVAHNE5OYDIW4NLUO744U6U26SWYKQ"), id)
+	})
+
+	t.Run("cat - add path", func(t *testing.T) {
+		t.Run("add path", func(t *testing.T) {
+			fileData, err := os.ReadFile("test/redcat.jpg")
+			require.NoError(t, err)
+			catData, err := api.Cat("JQXCTSC5JZCGXBGYVRXTZPBWLP6JCYZTBIDSCYEGZJCUKHTYOINA")
+			require.NoError(t, err)
+			require.Equal(t, fileData, catData)
+		})
+
+		t.Run("add bytes", func(t *testing.T) {
+			catData, err := api.Cat("AHBHO3TJNH4OGKMXABIXZVDVAHNE5OYDIW4NLUO744U6U26SWYKQ")
+			require.NoError(t, err)
+			require.Equal(t, bytesToAdd, catData)
+		})
 	})
 }
 
@@ -109,15 +127,20 @@ func createDHT(t *testing.T, k uint64, port uint16) *dht.Node {
 }
 
 func createDaemon(port uint16) *Daemon {
-	c := dht.DefaultClientConfig()
+	c := DefaultDaemonConfig()
+	c.StorePath = store.InMemory
 	c.Port = port
-	return NewDaemon(store.InMemory, c)
+	c.RpcPort = port + 1000
+	c.PublicIP = "dummy"
+	return NewDaemon(c)
 }
 
 func createAPI(t *testing.T, port uint16) *API {
-	c := dht.DefaultClientConfig()
+	c := DefaultDaemonConfig()
 	c.Port = port
-	api, err := NewAPI(c)
+	c.RpcPort = port + 1000
+	c.PublicIP = "dummy"
+	api, err := NewAPIFromConfig(c)
 	require.NoError(t, err)
 	return api
 }

@@ -213,6 +213,7 @@ func TestIntegrationClient(t *testing.T) {
 
 	t.Run("authed upload to A", func(t *testing.T) {
 		require.NoError(t, client.PutKey(k))
+		time.Sleep(1 * time.Second) // Sleep allows the system to become consistent
 
 		// Verify peer exists on A and B
 		peersA, err := A.peerStore.Get(k)
@@ -220,7 +221,7 @@ func TestIntegrationClient(t *testing.T) {
 		require.Len(t, peersA, 1)
 		require.Equal(t, localhost, peersA[0].IP)
 		require.Equal(t, client.config.Port, peersA[0].Port)
-		require.WithinDuration(t, time.Now(), peersA[0].Published, 1*time.Second)
+		require.WithinDuration(t, time.Now(), peersA[0].Published, 3*time.Second)
 		require.Equal(t, 1, peersA[0].ASN) // The ASN for localhost on A is 1
 
 		peersB, err := B.peerStore.Get(k)
@@ -234,7 +235,7 @@ func TestIntegrationClient(t *testing.T) {
 		require.Len(t, ps, 1)
 		require.Equal(t, localhost, ps[0].IP)
 		require.Equal(t, client.config.Port, ps[0].Port)
-		require.WithinDuration(t, time.Now(), ps[0].Published, 1*time.Second)
+		require.WithinDuration(t, time.Now(), ps[0].Published, 3*time.Second)
 		require.Equal(t, 1, ps[0].ASN) // The ASN for localhost on A is 1
 	})
 }

@@ -10,7 +10,7 @@ import (
 	"inu/store"
 )
 
-const NumChildren = 2
+const NumChildren = 15
 
 const ChunkSize = 256 * 1024
 
@@ -94,7 +94,7 @@ func (fs *FS) AddBytes(bytes []byte) (merkle.Node, error) {
 	nodes := make([]merkle.Node, 0)
 	builder := merkle.NewNodeBuilder()
 
-	// Wrap each chunk in an INode and
+	// Wrap each chunk in an inode and
 	// put it in the block store
 	for _, c := range chunks(bytes, ChunkSize) {
 		builder.Reset()
@@ -254,6 +254,30 @@ func (fs *FS) resolvePath(cid cid.CID, parts []string) (merkle.Node, error) {
 
 	// If we're here we failed to find a link
 	return merkle.Node{}, fmt.Errorf("invalid path")
+}
+
+func (fs *FS) DAG(id cid.CID) ([]cid.CID, int, error) {
+	b, err := fs.store.Get(id)
+	if err != nil {
+		return nil, 0, err
+	}
+	m, err := merkle.ParseBlock(b)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	size := len(m.Block().Data)
+	cids := []cid.CID{id}
+	for _, l := range m.Links() {
+		cs, s, err := fs.DAG(l.CID)
+		if err != nil {
+			return nil, 0, err
+		}
+		cids = append(cids, cs...)
+		size += s
+	}
+
+	return cids, size, nil
 }
 
 func chunks[T any](xs []T, size int) (chunks [][]T) {
