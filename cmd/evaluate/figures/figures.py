@@ -26,30 +26,6 @@ def save_figure(name: str, fig: Figure, ax: Axes, legend_title=""):
 
 # Figures
 
-def draw_stress(name: str, measurement="mean", measurement_title="Mean"):
-    name = name.removesuffix(".json")
-    with open(f"{name}.json", "r") as f:
-        stress = json.loads(f.read())
-   
-    fig, ax = new_figure()
-
-    for nodes in parse_int_keys(stress):
-        xs: list[float] = []
-        ys: list[float] = []
-
-        rates = stress[str(nodes)]
-        for rps in parse_int_keys(rates):
-            ms = rates[str(rps)]
-            xs .append(rps)
-            ys.append(ms[measurement])
-          
-        ax.plot(xs, ys, label=f"N = {nodes}", linestyle="--", marker="o")
-
-    ax.set_title(f"{measurement_title} Latency of Requests")
-    ax.set_xlabel("Requests Per Second (n/s)")
-    ax.set_ylabel("Latency (ms)")
-    save_figure(f"{name}_{measurement}", fig, ax)
-
 def _draw_variance(name: str, symbol: str, key: str) -> tuple[Figure, Axes]:
     name = name.removesuffix(".json")
     with open(f"{name}.json", "r") as f:
@@ -165,17 +141,8 @@ def draw_routing_load(name: str):
     save_figure(name, fig, ax)
 
 if __name__ == "__main__":
-    plt.style.use("bmh")
-
-    stress = "../results/stress.json"
-    draw_stress(stress, measurement="mean", measurement_title="Mean")
-    draw_stress(stress, measurement="p99", measurement_title="99th Percentile")
-    draw_stress(stress, measurement="p9999", measurement_title="99.99th Percentile")
-    
     draw_variance("../results/k-variance.json", "k")
     draw_variance("../results/alpha-variance.json", "α")
-    
     draw_dl_speed("../results/dl-speed-wifi.json", "Wi-Fi")
-
     draw_routing_load("../results/routing-load.json")
 

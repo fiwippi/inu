@@ -11,25 +11,17 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"golang.org/x/exp/rand"
-	"golang.org/x/sync/errgroup"
-	"golang.org/x/time/rate"
-	"gonum.org/v1/gonum/stat"
 	"gonum.org/v1/gonum/stat/distuv"
 
 	"inu"
-	"inu/cid"
 	"inu/cmd/evaluate"
 	"inu/dht"
-	"inu/fs"
-	"inu/store"
 )
 
 const clearLine = "\033[2K\r"
@@ -66,9 +58,6 @@ func main() {
 	case "churn":
 		ensureNArgs(1)
 		ctlChurn(stdin)
-	case "stress":
-		ensureNArgs(1)
-		ctlStress(stdin)
 	default:
 		panic("invalid control specifier")
 	}
@@ -470,216 +459,6 @@ func ctlRouting(ctlData []byte) {
 	// Downloader download
 	if err := downstreamAPI.Download(c); err != nil {
 		panic(err)
-	}
-}
-
-// Stress
-
-func ctlStress(ctlData []byte) {
-	ctl := evaluate.StressCtl{}
-	if err := json.Unmarshal(ctlData, &ctl); err != nil {
-		panic(err)
-	}
-
-	// -- Setup
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	ip := evaluate.AllocateIPv4(ctx, ctl.CIDR)
-	allocated := make([]string, 0)
-
-	// Create initial bootstrap node
-	bootstrapConfig := dht.DefaultNodeConfig()
-	bootstrapConfig.ID = dht.ParseUint64(0)
-	bootstrapConfig.Host = <-ip.NewIP
-	allocated = append(allocated, bootstrapConfig.Host+":3000")
-	bootstrap, err := dht.NewNode(bootstrapConfig)
-	if err != nil {
-		panic(err)
-	}
-	if err := bootstrap.Start(); err != nil {
-		panic(err)
-	}
-	defer bootstrap.Stop()
-
-	keyRand := rand.New(rand.NewSource(0))
-	nodeKeys := make([]dht.Key, ctl.Ns-1)
-	for i := range nodeKeys {
-		nodeKeys[i] = randKey(keyRand)
-	}
-
-	// Add ns-1 nodes for a total of ns nodes in the DHT
-	// and bootstrap them to the dht
-	nodes := make([]*dht.Node, ctl.Ns-1)
-	for i := range nodes {
-		a := <-ip.NewIP
-		allocated = append(allocated, a+":3000")
-		n, err := dht.NewNode(dht.DefaultNodeConfig().WithID(nodeKeys[i]).WithHost(a))
-		if err != nil {
-			panic(err)
-		}
-		nodes[i] = n
-
-		if err := n.Start(); err != nil {
-			panic(err)
-		}
-		defer n.Stop()
-		if err := n.Bootstrap(bootstrap.Contact()); err != nil {
-			panic(err)
-		}
-	}
-
-	// -- Simulation
-
-	// Stress:
-	//   1. Upload the file to the DHT
-	//   2. Send random put/get from each user
-
-	// Generate the file
-	ifs := fs.NewFS(store.InMemory)
-	root, err := ifs.AddBytes(newFile(50 * 1024 * 1024))
-	if err != nil {
-		panic(err)
-	}
-	dag, _, err := ifs.DAG(root.Block().CID)
-	if err != nil {
-		panic(err)
-	}
-
-	state := newStressState(ctl, dag, allocated)
-	ctx, cancel = context.WithDeadline(ctx, time.Now().Add(ctl.Duration))
-	defer cancel()
-	state.StressUpload(ctx)
-	state.StressRandom(ctx)
-	state.eg.Wait()
-
-	// Cleanup
-	close(state.agg)
-	<-state.doneStress
-
-	// Output
-	fs := make([]float64, len(state.durations))
-	for i := range fs {
-		fs[i] = float64(state.durations[i]) / 1e6 // convert to milliseconds
-	}
-
-	mean := float64(0)
-	for _, f := range fs {
-		mean += f
-	}
-	mean /= float64(len(fs))
-
-	slices.Sort(fs)
-	err = json.NewEncoder(os.Stdout).Encode(evaluate.StressResult{
-		Mean: mean,
-		P99:  stat.Quantile(0.99, stat.Empirical, fs, nil),
-		P999: stat.Quantile(0.999, stat.Empirical, fs, nil),
-	})
-	if err != nil {
-		panic(err)
-	}
-}
-
-type stressState struct {
-	client     *dht.Client
-	limiter    *rate.Limiter
-	agg        chan<- time.Duration
-	durations  []time.Duration
-	keys       []dht.Key
-	eg         *errgroup.Group
-	doneStress <-chan struct{}
-}
-
-func newStressState(ctl evaluate.StressCtl, dag []cid.CID, nodes []string) *stressState {
-	// DAG to key conversion
-	keys := make([]dht.Key, len(dag))
-	for i := range dag {
-		k, err := dht.ParseCID(dag[i])
-		if err != nil {
-			panic(err)
-		}
-		keys[i] = k
-	}
-
-	// Limit concurrent number of requests
-	eg := errgroup.Group{}
-	eg.SetLimit(ctl.Qps / 250) // Each user makes 250 requests per second
-
-	// DHT client
-	config := dht.DefaultClientConfig()
-	config.Nodes = nodes
-	client := dht.NewClient(config)
-
-	// Create the stressor and run the aggregation
-	agg := make(chan time.Duration)
-	doneAgg := make(chan struct{})
-	s := &stressState{
-		client:     client,
-		limiter:    rate.NewLimiter(rate.Limit(ctl.Qps), 1),
-		agg:        agg,
-		durations:  make([]time.Duration, 0),
-		keys:       keys,
-		eg:         &eg,
-		doneStress: doneAgg,
-	}
-
-	go func() {
-		for d := range agg {
-			s.durations = append(s.durations, d)
-		}
-		doneAgg <- struct{}{}
-	}()
-
-	return s
-}
-
-func (s *stressState) StressUpload(ctx context.Context) {
-	for _, k := range s.keys {
-		if err := s.limiter.Wait(ctx); err != nil {
-			if !strings.Contains(err.Error(), "context deadline") {
-				panic(err)
-			}
-			return
-		}
-
-		start := time.Now()
-		if err := s.client.PutKey(k); err != nil {
-			panic(err)
-		}
-		s.agg <- time.Since(start)
-	}
-}
-
-func (s *stressState) StressRandom(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-
-		}
-
-		if err := s.limiter.Wait(ctx); err != nil {
-			if !strings.Contains(err.Error(), "context deadline") {
-				panic(err)
-			}
-			return
-		}
-
-		s.eg.TryGo(func() error {
-			k := s.keys[rand.Intn(len(s.keys))]
-
-			start := time.Now()
-			if rand.Intn(4)%2 == 0 {
-				s.client.FindPeers(k)
-			} else {
-				s.client.PutKey(k)
-			}
-			s.agg <- time.Since(start)
-
-			return nil
-		})
 	}
 }
 

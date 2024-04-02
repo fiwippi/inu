@@ -275,51 +275,6 @@ func TestChurn_AlphaVariance(t *testing.T) {
 	wg.Wait()
 }
 
-// Stress test
-
-func TestStress(t *testing.T) {
-	results := make(map[int]map[int]StressResult)
-
-	// Progress
-	name := "./results/stress.json"
-	count := int64(0)
-	p := newProgress("./results/stress.progress")
-	if p.task > 0 {
-		f, err := os.Open(name)
-		if err == nil {
-			if err := json.NewDecoder(f).Decode(&results); err != nil {
-				panic(err)
-			}
-		}
-		if err := f.Close(); err != nil {
-			panic(err)
-		}
-	}
-
-	for _, size := range []int{2, 4, 8, 16, 32, 64} {
-		if results[size] == nil {
-			results[size] = make(map[int]StressResult)
-		}
-
-		for _, rps := range []int{250, 500, 1000, 2000, 4000, 8000, 16000} {
-			if count < p.Load() {
-				count += 1
-				continue
-			}
-
-			res := testStress(size, rps, 15*time.Minute)
-
-			results[size][rps] = res
-			saveJSON(name, results)
-
-			t.Logf("\rsize = %d, rps = %d, stress = %+v\n", size, rps, res)
-
-			count += 1
-			p.Set(count)
-		}
-	}
-}
-
 // Progress
 
 type progress struct {
