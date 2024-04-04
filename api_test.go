@@ -31,7 +31,7 @@ func TestAPI_Add_Cat(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, rs, 1)
 		require.Equal(t, fs.Record{
-			CID:  "JQXCTSC5JZCGXBGYVRXTZPBWLP6JCYZTBIDSCYEGZJCUKHTYOINA",
+			CID:  "QQ7OAXJ25MYFACNNFTQQBZMSNNO4PMQA5NVYATGYQETALXUTSJ3Q",
 			Path: "test/redcat.jpg",
 		}, rs[0])
 	})
@@ -47,7 +47,7 @@ func TestAPI_Add_Cat(t *testing.T) {
 		t.Run("add path", func(t *testing.T) {
 			fileData, err := os.ReadFile("test/redcat.jpg")
 			require.NoError(t, err)
-			catData, err := api.Cat("JQXCTSC5JZCGXBGYVRXTZPBWLP6JCYZTBIDSCYEGZJCUKHTYOINA")
+			catData, err := api.Cat("QQ7OAXJ25MYFACNNFTQQBZMSNNO4PMQA5NVYATGYQETALXUTSJ3Q")
 			require.NoError(t, err)
 			require.Equal(t, fileData, catData)
 		})
@@ -94,26 +94,26 @@ func TestAPI_Upload_Download(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, rs, 1)
 		require.Equal(t, fs.Record{
-			CID:  "JQXCTSC5JZCGXBGYVRXTZPBWLP6JCYZTBIDSCYEGZJCUKHTYOINA",
+			CID:  "QQ7OAXJ25MYFACNNFTQQBZMSNNO4PMQA5NVYATGYQETALXUTSJ3Q",
 			Path: "test/redcat.jpg",
 		}, rs[0])
 
 		// Now upload it
-		count, err := api.Upload("JQXCTSC5JZCGXBGYVRXTZPBWLP6JCYZTBIDSCYEGZJCUKHTYOINA")
+		count, err := api.Upload("QQ7OAXJ25MYFACNNFTQQBZMSNNO4PMQA5NVYATGYQETALXUTSJ3Q")
 		require.NoError(t, err)
-		require.Equal(t, uint(11), count)
+		require.Equal(t, uint(6), count)
 	})
 
 	t.Run("download", func(t *testing.T) {
 		api := createAPI(t, dmnB.config.Port)
 
 		// Download the DAG
-		require.NoError(t, api.Download("JQXCTSC5JZCGXBGYVRXTZPBWLP6JCYZTBIDSCYEGZJCUKHTYOINA"))
+		require.NoError(t, api.Download("QQ7OAXJ25MYFACNNFTQQBZMSNNO4PMQA5NVYATGYQETALXUTSJ3Q"))
 
 		// Verify content stored correctly
 		s, err := dmnB.store.Size()
 		require.NoError(t, err)
-		require.Equal(t, uint(11), s)
+		require.Equal(t, uint(6), s)
 	})
 }
 
