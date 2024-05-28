@@ -21,7 +21,7 @@ An evaluation is performed in the [paper](paper.pdf).
 
 No!
 
-**Q: Can I use still use this to share files?**
+**Q: Can I still use this to share files?**
 
 Well yeah, but, the filesharing component of the system is not especially ergonomic. Consider using good ol' BitTorrent
 if you're looking for something similar.
