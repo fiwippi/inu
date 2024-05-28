@@ -3,6 +3,7 @@ package dht
 import (
 	"container/list"
 	"log/slog"
+	"math"
 	"math/big"
 	"slices"
 	"sync"
@@ -154,7 +155,10 @@ type routingTable struct {
 
 func newRoutingTable(self Contact, k int) *routingTable {
 	low := Key{}
-	high := fromBigInt(new(big.Int).Exp(big.NewInt(2), big.NewInt(255), nil))
+	high := Key{}
+	for i := range k {
+		high[i] = math.MaxUint8
+	}
 
 	return &routingTable{
 		k:       k,
