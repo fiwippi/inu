@@ -43,7 +43,7 @@ func TestAPI_Add_Cat(t *testing.T) {
 		require.Equal(t, cid.CID("AHBHO3TJNH4OGKMXABIXZVDVAHNE5OYDIW4NLUO744U6U26SWYKQ"), id)
 	})
 
-	t.Run("cat - add path", func(t *testing.T) {
+	t.Run("cat", func(t *testing.T) {
 		t.Run("add path", func(t *testing.T) {
 			fileData, err := os.ReadFile("test/redcat.jpg")
 			require.NoError(t, err)
