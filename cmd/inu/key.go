@@ -1,8 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -21,11 +21,8 @@ var keyRandCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		k := dht.Key{}
-
-		for i := range k {
-			if rand.Int31()%2 == 0 {
-				k[i] = 1
-			}
+		if _, err := rand.Read(k[:]); err != nil {
+			return err
 		}
 
 		fmt.Println(k.MarshalB32())

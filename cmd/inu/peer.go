@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -156,6 +157,14 @@ func parseDaemonConfig(cmd *cobra.Command) (inu.DaemonConfig, error) {
 	publicIP := os.Getenv("INU_DAEMON_PUBLIC_IP")
 	if publicIP != "" {
 		c.PublicIP = publicIP
+	}
+	rpcPort := os.Getenv("INU_DAEMON_RPC_PORT")
+	if rpcPort != "" {
+		p, err := strconv.ParseUint(rpcPort, 10, 16)
+		if err != nil {
+			return inu.DaemonConfig{}, err
+		}
+		c.RpcPort = uint16(p)
 	}
 
 	return c, nil
